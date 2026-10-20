@@ -13,14 +13,56 @@ import remarkGfm from "remark-gfm";
 
 import { useWikiConfig } from "@/client/wiki-config";
 import { getTopicColor, type TopicAliasConfig } from "@/lib/wiki-config";
+import { createHeadingIdSequence } from "@/lib/markdown";
 import type { WikiHeading, WikiNeighbor, WikiPageData } from "@/lib/wiki-shared";
 import { usePersonImage } from "@/client/use-person-image";
 
 import { fetchJson, isSetupRequiredResponse } from "../api";
 import { RouteErrorBoundary } from "../route-error-boundary";
 
+interface HastNode {
+  type: string;
+  tagName?: string;
+  value?: string;
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+}
+
+const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4"]);
+
+function hastText(node: HastNode): string {
+  return node.type === "text" ? (node.value ?? "") : (node.children ?? []).map(hastText).join("");
+}
+
+/**
+ * Gives rendered headings the same ids the TOC links to (see extractMarkdownHeadings).
+ * Headings in blockquotes are skipped on both sides.
+ */
+function rehypeHeadingIds() {
+  return (tree: HastNode) => {
+    const nextId = createHeadingIdSequence();
+    const walk = (node: HastNode) => {
+      for (const child of node.children ?? []) {
+        if (child.type === "element" && child.tagName && HEADING_TAGS.has(child.tagName)) {
+          child.properties = { ...child.properties, id: nextId(hastText(child)) };
+        } else if (child.tagName !== "blockquote" && child.tagName !== "pre") {
+          walk(child);
+        }
+      }
+    };
+    walk(tree);
+  };
+}
+
+function scrollToHeading(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  // Keep the section in the URL so it can be shared or reloaded.
+  history.replaceState(history.state, "", `#${encodeURIComponent(id)}`);
+}
+
 const remarkPlugins = [remarkGfm];
-const rehypePlugins = [rehypeHighlight];
+const rehypePlugins = [rehypeHeadingIds, rehypeHighlight];
+const rehypePluginsWithoutCode = [rehypeHeadingIds];
 const markdownComponents = {
   h1: ({ ...props }) => <h1 className="mb-4 text-3xl scroll-mt-20" {...props} />,
   h2: ({ ...props }) => <h2 className="font-display mb-3 mt-10 text-xl font-light scroll-mt-20" {...props} />,
@@ -86,7 +128,7 @@ function TableOfContents({
           href={`#${h.id}`}
           onClick={(e) => {
             e.preventDefault();
-            document.getElementById(h.id)?.scrollIntoView({ behavior: "smooth" });
+            scrollToHeading(h.id);
           }}
           className={`toc-item block text-[13px] leading-snug transition-colors duration-150 ${
             h.level === 3 ? "pl-3" : h.level >= 4 ? "pl-6" : ""
@@ -457,16 +499,19 @@ export function Component() {
   const config = useWikiConfig();
   const navigate = useNavigate();
   const { revalidate, state: revalidationState } = useRevalidator();
-  const pageRehypePlugins = page.hasCodeBlocks ? rehypePlugins : [];
+  const pageRehypePlugins = page.hasCodeBlocks ? rehypePlugins : rehypePluginsWithoutCode;
   const filteredHeadings = page.headings.filter((h) => h.text !== "Source Notes");
   const activeId = useActiveHeading(filteredHeadings);
   const portraitUrl = usePersonImage(page.isPerson ? page.title : null);
   const [personOverrideError, setPersonOverrideError] = useState<string | null>(null);
   const [isUpdatingPerson, setIsUpdatingPerson] = useState(false);
 
-  // Scroll to top whenever the article slug changes
+  // On a new article, jump to the #section in the URL if there is one, else to the top.
   useEffect(() => {
-    window.scrollTo(0, 0);
+    const hash = decodeURIComponent(window.location.hash.slice(1));
+    const target = hash ? document.getElementById(hash) : null;
+    if (target) target.scrollIntoView();
+    else window.scrollTo(0, 0);
   }, [page.slug]);
   const readTime = estimateReadingTime(page.contentMarkdown);
   const words = wordCount(page.contentMarkdown);
@@ -623,7 +668,7 @@ export function Component() {
                   href={`#${h.id}`}
                   onClick={(e) => {
                     e.preventDefault();
-                    document.getElementById(h.id)?.scrollIntoView({ behavior: "smooth" });
+                    scrollToHeading(h.id);
                   }}
                   className="text-sm text-[var(--muted-foreground)] transition-colors duration-150 hover:text-[var(--foreground)]"
                 >

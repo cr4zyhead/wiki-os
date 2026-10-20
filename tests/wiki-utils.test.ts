@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { prepareWikiMarkdown, transformObsidianLinks } from "../src/lib/markdown";
+import {
+  createHeadingIdSequence,
+  extractMarkdownHeadings,
+  prepareWikiMarkdown,
+  transformObsidianLinks,
+} from "../src/lib/markdown";
 import { decodeSlugParts, slugFromFileName, titleFromFileName } from "../src/lib/wiki";
 
 describe("wiki helpers", () => {
@@ -20,6 +25,34 @@ describe("wiki helpers", () => {
     expect(transformObsidianLinks("Deck: [[slides/The Algorithm - Slides]].")).toBe(
       "Deck: [slides/The Algorithm - Slides](/wiki/slides/The%20Algorithm%20-%20Slides).",
     );
+  });
+
+  it("extracts unique, readable heading ids and skips code blocks", () => {
+    const headings = extractMarkdownHeadings(
+      [
+        "## Estado actual",
+        "```markdown",
+        "## Estado actual",
+        "## Log",
+        "```",
+        "## Configuración `aplicada` (2026-10-18)",
+        "~~~",
+        "# Not a heading",
+        "~~~",
+        "### Estado actual ##",
+      ].join("\n"),
+    );
+
+    expect(headings).toEqual([
+      { text: "Estado actual", id: "estado-actual", level: 2 },
+      { text: "Configuración aplicada (2026-10-18)", id: "configuración-aplicada-2026-10-18", level: 2 },
+      { text: "Estado actual", id: "estado-actual-1", level: 3 },
+    ]);
+  });
+
+  it("numbers repeated heading ids in document order", () => {
+    const nextId = createHeadingIdSequence();
+    expect(["Intro", "Intro", "intro!", "★"].map(nextId)).toEqual(["intro", "intro-1", "intro-2", "section"]);
   });
 
   it("decodes nested slug parts safely", () => {
