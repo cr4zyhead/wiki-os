@@ -54,8 +54,51 @@ function rehypeHeadingIds() {
   };
 }
 
+const HEADING_SCROLL_OFFSET = 80; // matches the headings' scroll-mt-20
+let cancelScrollAnimation: (() => void) | null = null;
+
+/**
+ * Eased scroll to an element. Animated in JS rather than with `behavior: "smooth"`,
+ * which some OS settings turn into an instant jump. Stops if the reader scrolls.
+ */
+function animateScrollTo(element: HTMLElement, duration = 600) {
+  cancelScrollAnimation?.();
+  const startY = window.scrollY;
+  const maxY = document.documentElement.scrollHeight - window.innerHeight;
+  const targetY = Math.min(maxY, Math.max(0, element.getBoundingClientRect().top + startY - HEADING_SCROLL_OFFSET));
+  const distance = targetY - startY;
+  const start = performance.now();
+  let frame = 0;
+
+  const stop = () => {
+    cancelAnimationFrame(frame);
+    window.removeEventListener("wheel", stop);
+    window.removeEventListener("touchstart", stop);
+    cancelScrollAnimation = null;
+  };
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2; // easeInOutCubic
+    window.scrollTo(0, startY + distance * eased);
+    if (t < 1) frame = requestAnimationFrame(step);
+    else stop();
+  };
+
+  window.addEventListener("wheel", stop, { passive: true });
+  window.addEventListener("touchstart", stop, { passive: true });
+  cancelScrollAnimation = stop;
+  frame = requestAnimationFrame(step);
+
+  // Briefly highlight the destination so the eye finds it.
+  element.classList.remove("heading-flash");
+  void element.offsetWidth;
+  element.classList.add("heading-flash");
+}
+
 function scrollToHeading(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  const element = document.getElementById(id);
+  if (!element) return;
+  animateScrollTo(element);
   // Keep the section in the URL so it can be shared or reloaded.
   history.replaceState(history.state, "", `#${encodeURIComponent(id)}`);
 }
@@ -510,8 +553,8 @@ export function Component() {
   useEffect(() => {
     const hash = decodeURIComponent(window.location.hash.slice(1));
     const target = hash ? document.getElementById(hash) : null;
-    if (target) target.scrollIntoView();
-    else window.scrollTo(0, 0);
+    window.scrollTo(0, 0);
+    if (target) animateScrollTo(target);
   }, [page.slug]);
   const readTime = estimateReadingTime(page.contentMarkdown);
   const words = wordCount(page.contentMarkdown);

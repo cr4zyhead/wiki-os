@@ -310,3 +310,25 @@ html {
     transform: none;
   }
 }
+
+/* Heading reached from the TOC or a #link: brief highlight. */
+@keyframes heading-flash {
+  0%,
+  30% {
+    background-color: var(--lavender-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.heading-flash {
+  border-radius: 0.375rem;
+  animation: heading-flash 1.6s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heading-flash {
+    animation: none;
+  }
+}
