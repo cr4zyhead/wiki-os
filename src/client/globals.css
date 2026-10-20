@@ -310,3 +310,97 @@ html {
     transform: none;
   }
 }
+
+/* ── Tables ── */
+.prose-wiki .table-wrap {
+  margin: 1.25rem 0 1.5rem;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--card);
+}
+
+.prose-wiki table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.925em;
+  line-height: 1.55;
+}
+
+.prose-wiki th {
+  background: var(--secondary);
+  color: var(--foreground);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.prose-wiki th,
+.prose-wiki td {
+  padding: 0.6rem 0.85rem;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+
+.prose-wiki tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.prose-wiki td {
+  min-width: 7rem;
+}
+
+.prose-wiki td code {
+  overflow-wrap: anywhere;
+}
+
+/* Phones: each row becomes a card, every cell labelled with its column header. */
+@media (max-width: 639px) {
+  .prose-wiki .table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .prose-wiki table,
+  .prose-wiki tbody,
+  .prose-wiki tr,
+  .prose-wiki td {
+    display: block;
+    width: 100%;
+  }
+
+  .prose-wiki thead {
+    display: none;
+  }
+
+  .prose-wiki tr {
+    margin-bottom: 0.75rem;
+    padding: 0.35rem 0;
+    border: 1px solid var(--border);
+    border-radius: 0.875rem;
+    background: var(--card);
+  }
+
+  .prose-wiki td {
+    min-width: 0;
+    padding: 0.4rem 0.9rem;
+    border-bottom: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .prose-wiki td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.1rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .prose-wiki td:empty {
+    display: none;
+  }
+}

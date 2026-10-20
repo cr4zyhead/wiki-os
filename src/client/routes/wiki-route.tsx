@@ -19,8 +19,45 @@ import { usePersonImage } from "@/client/use-person-image";
 import { fetchJson, isSetupRequiredResponse } from "../api";
 import { RouteErrorBoundary } from "../route-error-boundary";
 
+interface HastNode {
+  type: string;
+  tagName?: string;
+  value?: string;
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+}
+
+function hastText(node: HastNode): string {
+  return node.type === "text" ? (node.value ?? "") : (node.children ?? []).map(hastText).join("");
+}
+
+function hastElements(node: HastNode, tagName: string): HastNode[] {
+  const found: HastNode[] = [];
+  for (const child of node.children ?? []) {
+    if (child.type !== "element") continue;
+    if (child.tagName === tagName) found.push(child);
+    else found.push(...hastElements(child, tagName));
+  }
+  return found;
+}
+
+/** Tags each table cell with its column header (data-label), used by the stacked mobile layout. */
+function rehypeTableLabels() {
+  return (tree: HastNode) => {
+    for (const table of hastElements(tree, "table")) {
+      const headers = hastElements(table, "th").map((th) => hastText(th).trim());
+      for (const row of hastElements(table, "tr")) {
+        hastElements(row, "td").forEach((cell, index) => {
+          if (headers[index]) cell.properties = { ...cell.properties, dataLabel: headers[index] };
+        });
+      }
+    }
+  };
+}
+
 const remarkPlugins = [remarkGfm];
-const rehypePlugins = [rehypeHighlight];
+const rehypePlugins = [rehypeTableLabels, rehypeHighlight];
+const rehypePluginsWithoutCode = [rehypeTableLabels];
 const markdownComponents = {
   h1: ({ ...props }) => <h1 className="mb-4 text-3xl scroll-mt-20" {...props} />,
   h2: ({ ...props }) => <h2 className="font-display mb-3 mt-10 text-xl font-light scroll-mt-20" {...props} />,
@@ -31,6 +68,12 @@ const markdownComponents = {
   ol: ({ ...props }) => <ol className="mb-4 list-decimal pl-6 leading-[1.8]" {...props} />,
   li: ({ ...props }) => <li className="mb-1.5" {...props} />,
   blockquote: ({ ...props }) => <blockquote className="my-4" {...props} />,
+  // Wide tables scroll inside their own box instead of being clipped by the page.
+  table: ({ ...props }) => (
+    <div className="table-wrap">
+      <table {...props} />
+    </div>
+  ),
 };
 
 function normalizeSplatParam(rawSplat: string | undefined) {
@@ -457,7 +500,7 @@ export function Component() {
   const config = useWikiConfig();
   const navigate = useNavigate();
   const { revalidate, state: revalidationState } = useRevalidator();
-  const pageRehypePlugins = page.hasCodeBlocks ? rehypePlugins : [];
+  const pageRehypePlugins = page.hasCodeBlocks ? rehypePlugins : rehypePluginsWithoutCode;
   const filteredHeadings = page.headings.filter((h) => h.text !== "Source Notes");
   const activeId = useActiveHeading(filteredHeadings);
   const portraitUrl = usePersonImage(page.isPerson ? page.title : null);
