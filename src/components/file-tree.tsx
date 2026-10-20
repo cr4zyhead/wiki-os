@@ -80,7 +80,7 @@ function TreeFolder({
   setFolder: (path: string, open: boolean) => void;
   onNavigate?: () => void;
 }) {
-  const indent = { paddingLeft: `${depth * 0.75 + 0.5}rem` };
+  const indent = { paddingLeft: `${depth * 0.9 + 0.5}rem` };
 
   return (
     <ul>
@@ -93,7 +93,7 @@ function TreeFolder({
               type="button"
               aria-expanded={open}
               onClick={() => setFolder(child.path, !open)}
-              className="flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-[13px] text-[var(--foreground)] transition-colors duration-150 hover:bg-[var(--secondary)]"
+              className="flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left text-sm text-[var(--foreground)] transition-colors duration-150 hover:bg-[var(--secondary)]"
               style={indent}
             >
               <ChevronRight
@@ -126,15 +126,15 @@ function TreeFolder({
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               title={page.title}
-              className={`flex items-center gap-1.5 rounded-md py-1 pr-2 text-[13px] transition-colors duration-150 ${
+              className={`flex items-start gap-2 rounded-md py-1.5 pr-2 text-sm leading-snug transition-colors duration-150 ${
                 active
                   ? "bg-[var(--secondary)] font-medium text-[var(--foreground)]"
                   : "text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
               }`}
-              style={{ paddingLeft: `${depth * 0.75 + 1.4}rem` }}
+              style={{ paddingLeft: `${depth * 0.9 + 1.6}rem` }}
             >
-              <FileText aria-hidden className="h-3.5 w-3.5 shrink-0 opacity-60" />
-              <span className="min-w-0 truncate">{page.title}</span>
+              <FileText aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-60" />
+              <span className="min-w-0 break-words">{page.title}</span>
             </Link>
           </li>
         );
@@ -183,7 +183,7 @@ export function FileTree({
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Filter pages…"
         aria-label="Filter pages"
-        className="mb-2 w-full rounded-md border border-[var(--border)] bg-white px-2.5 py-1.5 text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--muted-foreground)]"
+        className="mb-3 w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--muted-foreground)]"
       />
       {failed && <p className="px-2 text-xs text-[var(--muted-foreground)]">Could not load pages.</p>}
       {!failed && !tree && <p className="px-2 text-xs text-[var(--muted-foreground)]">Loading…</p>}

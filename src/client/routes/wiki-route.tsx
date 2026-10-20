@@ -737,7 +737,7 @@ export function Component() {
           )}
 
           {/* Desktop file tree */}
-          <aside className="hidden xl:block absolute -left-64 top-0 bottom-0 w-56">
+          <aside className="hidden xl:block absolute -left-64 top-0 bottom-0 w-56 2xl:-left-[22rem] 2xl:w-72">
             <div className="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto pr-1">
               <FileTree currentSlug={page.slug} expanded={expanded} setFolder={setFolder} />
             </div>

@@ -47,7 +47,7 @@ export function Component() {
       </SearchBox>
 
       {/* The centered homepage is max-w-4xl, so the tree only fits beside it on 2xl screens. */}
-      <aside className="fixed bottom-6 left-6 top-24 hidden w-60 overflow-y-auto pr-1 2xl:block">
+      <aside className="fixed bottom-6 left-8 top-24 hidden w-72 overflow-y-auto pr-1 2xl:block">
         <FileTree currentSlug="" expanded={expanded} setFolder={setFolder} />
       </aside>
 
