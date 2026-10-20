@@ -170,6 +170,21 @@ html {
   box-shadow: 0 8px 24px -12px rgba(21, 19, 26, 0.25);
 }
 
+/* Code blocks without a language get no .hljs class: give them light text on the dark
+   block, and keep github-dark's own background/padding from nesting a second box. */
+.prose-wiki pre {
+  color: #e6e1f0;
+}
+
+.prose-wiki pre code,
+.prose-wiki pre code.hljs {
+  display: block;
+  background: transparent;
+  padding: 0;
+  font-size: 0.875em;
+  line-height: 1.6;
+}
+
 .prose-wiki code:not(pre code) {
   border-radius: 0.4rem;
   background: var(--lavender-soft);
