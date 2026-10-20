@@ -173,6 +173,7 @@ html {
 /* Code blocks without a language get no .hljs class: give them light text on the dark
    block, and keep github-dark's own background/padding from nesting a second box. */
 .prose-wiki pre {
+  margin: 1.25rem 0 1.5rem;
   color: #e6e1f0;
 }
 
