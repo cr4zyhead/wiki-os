@@ -311,6 +311,12 @@ html {
   }
 }
 
+/* Long unbreakable strings (paths, hashes, URLs in inline code or links) wrap instead of
+   widening the page on phones. Code blocks keep their own horizontal scroll. */
+.prose-wiki {
+  overflow-wrap: break-word;
+}
+
 /* ── Tables ── */
 .prose-wiki .table-wrap {
   margin: 1.25rem 0 1.5rem;
