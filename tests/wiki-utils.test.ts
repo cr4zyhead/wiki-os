@@ -22,6 +22,14 @@ describe("wiki helpers", () => {
     );
   });
 
+  it("uses the leading H1 as the page title", () => {
+    expect(prepareWikiMarkdown("# Trip *notes*: [[Travel/packing|packing list]]\n\nBody").title).toBe(
+      "Trip notes: packing list",
+    );
+    expect(prepareWikiMarkdown("Intro\n\n# Not a title").title).toBeUndefined();
+    expect(prepareWikiMarkdown("## Only h2").title).toBeUndefined();
+  });
+
   it("decodes nested slug parts safely", () => {
     expect(decodeSlugParts(["slides", "The%20Algorithm%20-%20Slides"])).toEqual([
       "slides",
@@ -39,6 +47,7 @@ describe("wiki helpers", () => {
           "# Title\n\nSee [[LLMs]].\n\n## Deep Dive\n\n```ts\nconst x = 1;\n```",
       ),
     ).toEqual({
+      title: "Title",
       contentMarkdown:
         "See [LLMs](/wiki/LLMs).\n\n## Deep Dive\n\n```ts\nconst x = 1;\n```",
       hasCodeBlocks: true,

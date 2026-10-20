@@ -42,6 +42,8 @@ export interface PreparedWikiMarkdown {
   contentMarkdown: string;
   hasCodeBlocks: boolean;
   headings: WikiHeading[];
+  /** Text of the leading `# H1`, if the note starts with one. */
+  title?: string;
 }
 
 export interface WikiIndexerRuntimeDependencies {
@@ -190,10 +192,11 @@ export async function loadIndexedWikiPage<TConfig>(
     ]);
 
     const config = await deps.getWikiEnvironmentConfig();
-    const title = deps.titleFromFileName(file);
-    const titleLower = title.toLowerCase();
     const { data: frontmatter, body } = deps.parseWikiFrontmatter(markdown);
     const prepared = deps.prepareWikiMarkdown(body);
+    // Prefer the note's own `# H1` (which the article view strips) over the file name.
+    const title = prepared.title ?? deps.titleFromFileName(file);
+    const titleLower = title.toLowerCase();
     const categoryNames = deps.deriveCategoryNames(
       file,
       title,

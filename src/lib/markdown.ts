@@ -16,6 +16,8 @@ export interface PreparedWikiMarkdown {
   contentMarkdown: string;
   hasCodeBlocks: boolean;
   headings: WikiHeading[];
+  /** Text of the leading `# H1`, if the note starts with one. */
+  title?: string;
 }
 
 export interface ParsedWikiFrontmatter {
@@ -132,6 +134,17 @@ export function stripLeadingMarkdownTitle(markdown: string) {
   return markdown.replace(/^#\s+.+\n?/, "").trimStart();
 }
 
+export function extractLeadingMarkdownTitle(markdown: string): string | undefined {
+  const match = markdown.match(/^#\s+(.+)/);
+  if (!match) return undefined;
+  const title = match[1]
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, target: string, label?: string) => label ?? target)
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`]/g, "")
+    .trim();
+  return title || undefined;
+}
+
 export function createHeadingId(text: string) {
   return text.toLowerCase().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-");
 }
@@ -163,8 +176,10 @@ export function extractMarkdownHeadings(markdown: string): WikiHeading[] {
 export function prepareWikiMarkdown(markdown: string): PreparedWikiMarkdown {
   const { body } = parseWikiFrontmatter(markdown);
   const contentMarkdown = stripLeadingMarkdownTitle(transformObsidianLinks(body));
+  const title = extractLeadingMarkdownTitle(body);
 
   return {
+    ...(title ? { title } : {}),
     contentMarkdown,
     hasCodeBlocks: contentMarkdown.includes("```"),
     headings: extractMarkdownHeadings(contentMarkdown),
