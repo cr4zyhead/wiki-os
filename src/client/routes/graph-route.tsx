@@ -627,7 +627,15 @@ export function Component() {
       focusNode(node);
     });
     sigma.on("clickStage", () => {
+      // Releasing a drag also emits a click; it must not close the focused node.
+      if (dragMoved) {
+        dragMoved = false;
+        return;
+      }
       if (focusedRef.current) focusNode(null);
+    });
+    sigma.on("downStage", () => {
+      dragMoved = false;
     });
 
     // Keep the overlay in sync while the camera moves (pan/zoom) and nothing is highlighted-animating.
