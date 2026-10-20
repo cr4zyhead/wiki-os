@@ -172,9 +172,10 @@ function InfoPanel({
 
   return (
     <div
-      className="surface-raised absolute left-4 right-4 z-20 overflow-hidden rounded-3xl sm:left-auto sm:right-4 sm:w-80"
-      style={{ top: "calc(env(safe-area-inset-top) + 4.75rem)" }}
+      // Phones: bottom sheet, so the focused node stays visible above it. Wider: top-right card.
+      className="surface-raised absolute inset-x-0 bottom-0 z-20 max-h-[45vh] overflow-y-auto rounded-t-3xl pb-[env(safe-area-inset-bottom)] sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-[calc(env(safe-area-inset-top)+4.75rem)] sm:max-h-none sm:w-80 sm:overflow-hidden sm:rounded-3xl sm:pb-0"
     >
+      <div aria-hidden className="mx-auto mt-2 h-1 w-10 rounded-full bg-[var(--border)] sm:hidden" />
       {/* Header */}
       <div className="border-b border-[var(--border)] px-5 py-4">
         <div className="flex items-start justify-between gap-2">
@@ -217,7 +218,7 @@ function InfoPanel({
       {/* Summary */}
       {node.summary && (
         <div className="border-b border-[var(--border)] px-5 py-3">
-          <p className="line-clamp-3 text-[0.8rem] leading-relaxed text-[var(--muted-foreground)]">
+          <p className="line-clamp-2 text-[0.8rem] sm:line-clamp-3 leading-relaxed text-[var(--muted-foreground)]">
             {node.summary}
           </p>
         </div>
@@ -236,7 +237,7 @@ function InfoPanel({
 
       {/* Connections list */}
       {neighborNodes.length > 0 && (
-        <div className="max-h-56 overflow-y-auto">
+        <div className="sm:max-h-56 sm:overflow-y-auto">
           <p className="px-5 pb-1.5 pt-3 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
             Connections ({neighborNodes.length})
           </p>
@@ -375,10 +376,22 @@ export function Component() {
     highlightRef.current(slug ?? hoveredRef.current);
     const sigma = sigmaRef.current;
     if (slug && zoom && sigma) {
-      // Center the node, zooming in only a little so its neighbors stay in view.
+      // Center the node, zooming in only a little so its neighbors stay in view. On phones the
+      // info panel is a bottom sheet, so place the node in the upper part of the screen instead.
       const pos = sigma.getNodeDisplayData(slug);
       const camera = sigma.getCamera();
-      if (pos) camera.animate({ x: pos.x, y: pos.y, ratio: Math.min(camera.ratio, 0.85) }, { duration: 500 });
+      if (pos) {
+        const ratio = Math.min(camera.ratio, 0.85);
+        let y = pos.y;
+        if (window.matchMedia("(max-width: 639px)").matches) {
+          const { width, height } = sigma.getDimensions();
+          const cameraState = { x: pos.x, y: pos.y, ratio, angle: camera.angle };
+          const upper = sigma.viewportToFramedGraph({ x: width / 2, y: height * 0.28 }, { cameraState });
+          const middle = sigma.viewportToFramedGraph({ x: width / 2, y: height / 2 }, { cameraState });
+          y = pos.y - (upper.y - middle.y);
+        }
+        camera.animate({ x: pos.x, y, ratio }, { duration: 500 });
+      }
     }
   }, []);
 
@@ -900,7 +913,11 @@ export function Component() {
       <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
 
       {/* Legend: color mode + groups (click to hide/show) */}
-      <div className="surface-raised absolute bottom-4 left-4 z-10 max-w-[calc(100%-2rem)] rounded-2xl px-3 py-2.5 sm:max-w-sm">
+      <div
+        className={`surface-raised absolute bottom-4 left-4 z-10 max-w-[calc(100%-2rem)] rounded-2xl px-3 py-2.5 sm:block sm:max-w-sm ${
+          focusedSlug ? "hidden" : "" // the bottom sheet takes this space on phones
+        }`}
+      >
         <div className="mb-2 flex items-center gap-1 text-[0.7rem] font-medium">
           <span className="mr-1 uppercase tracking-wider text-[var(--muted-foreground)]">Color</span>
           {(["folder", "topic"] as const).map((mode) => (
@@ -946,7 +963,11 @@ export function Component() {
       </div>
 
       {/* Camera + animation controls */}
-      <div className="surface-raised absolute bottom-4 right-4 z-10 flex flex-col overflow-hidden rounded-2xl">
+      <div
+        className={`surface-raised absolute bottom-4 right-4 z-10 flex-col overflow-hidden rounded-2xl sm:flex ${
+          focusedSlug ? "hidden" : "flex"
+        }`}
+      >
         {[
           { label: "Zoom in", icon: Plus, action: () => sigmaRef.current?.getCamera().animatedZoom({ duration: 300 }) },
           { label: "Zoom out", icon: Minus, action: () => sigmaRef.current?.getCamera().animatedUnzoom({ duration: 300 }) },
