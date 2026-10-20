@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, redirect, useLoaderData, useNavigate } from "react-router-dom";
 import Graph from "graphology";
 import forceAtlas2 from "graphology-layout-forceatlas2";
+import FA2Layout from "graphology-layout-forceatlas2/worker";
 import SigmaLib from "sigma";
+import { Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
 
 import { useWikiConfig } from "@/client/wiki-config";
-import { getTopicColor, type TopicAliasConfig } from "@/lib/wiki-config";
+import { getTopicColor } from "@/lib/wiki-config";
+import { assignGroupColors, folderGroup, mixColor, seedPosition } from "@/lib/graph-visuals";
 import type { GraphData, GraphNode } from "@/lib/wiki-shared";
 import { fetchJson, isSetupRequiredResponse } from "../api";
 import { RouteErrorBoundary } from "../route-error-boundary";
@@ -13,38 +16,31 @@ import { RouteErrorBoundary } from "../route-error-boundary";
 /* ── Colors ── */
 
 const DEFAULT_NODE_COLOR = "#c4c0cc";
-const EDGE_DEFAULT = "#ece5d2";
-const EDGE_HOVER = "rgba(132, 185, 201, 0.85)";
+const EDGE_DEFAULT = "#e6dfcc";
+const EDGE_ACTIVE = "#84b9c9";
+const FADED_NODE = "#ebe6da";
 const LABEL_COLOR = "#6b6673";
 const BG_COLOR = "#faf7f3";
 
-function getCategoryColor(
-  categories: string[],
-  aliases: Record<string, TopicAliasConfig>,
-): string {
-  for (const cat of categories) {
-    return getTopicColor(cat, aliases);
-  }
-  return DEFAULT_NODE_COLOR;
+type ColorMode = "folder" | "topic";
+
+function groupKey(node: GraphNode, mode: ColorMode) {
+  return mode === "folder" ? folderGroup(node.slug) : (node.categories[0] ?? "Other");
 }
 
 /* ── Graph building ── */
 
-function buildGraph(
-  data: GraphData,
-  aliases: Record<string, TopicAliasConfig>,
-): Graph {
+function buildGraph(data: GraphData): Graph {
   const graph = new Graph();
+  const folders = [...new Set(data.nodes.map((node) => folderGroup(node.slug)))];
 
   for (const node of data.nodes) {
-    const size = Math.max(2.5, Math.min(16, 2.5 + Math.sqrt(node.backlinkCount) * 2));
+    const size = Math.max(3, Math.min(16, 3 + Math.sqrt(node.backlinkCount) * 2));
     graph.addNode(node.slug, {
       label: node.title,
       size,
-      color: getCategoryColor(node.categories, aliases),
-      originalColor: getCategoryColor(node.categories, aliases),
-      x: Math.random() * 1000,
-      y: Math.random() * 1000,
+      color: DEFAULT_NODE_COLOR,
+      ...seedPosition(folders.indexOf(folderGroup(node.slug)), folders.length),
       categories: node.categories,
       backlinkCount: node.backlinkCount,
       wordCount: node.wordCount,
@@ -57,7 +53,7 @@ function buildGraph(
       if (!graph.hasEdge(key)) {
         graph.addEdgeWithKey(key, edge.source, edge.target, {
           weight: edge.weight,
-          size: 0.3,
+          size: 0.6,
           color: EDGE_DEFAULT,
         });
       }
@@ -67,19 +63,25 @@ function buildGraph(
   return graph;
 }
 
-function runLayout(graph: Graph) {
-  forceAtlas2.assign(graph, {
-    iterations: 500,
+function createLayout(graph: Graph) {
+  return new FA2Layout(graph, {
     settings: {
+      ...forceAtlas2.inferSettings(graph),
       gravity: 1,
       scalingRatio: 10,
-      barnesHutOptimize: true,
+      barnesHutOptimize: graph.order > 300,
       strongGravityMode: true,
-      slowDown: 3,
-      outboundAttractionDistribution: false,
+      slowDown: 4,
       linLogMode: true,
     },
   });
+}
+
+/** Stable 0..1 offset per edge, so particles on different edges don't move in lockstep. */
+function edgePhase(key: string) {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return ((hash >>> 0) % 1000) / 1000;
 }
 
 /* ── Search ── */
@@ -163,16 +165,18 @@ function InfoPanel({
   onClose,
   onClickNeighbor,
   onNavigate,
-  aliases,
+  colorOf,
+  groupLabel,
 }: {
   node: GraphNode;
   neighborNodes: GraphNode[];
   onClose: () => void;
   onClickNeighbor: (slug: string) => void;
   onNavigate: (slug: string) => void;
-  aliases: Record<string, TopicAliasConfig>;
+  colorOf: (slug: string) => string;
+  groupLabel: string;
 }) {
-  const catColor = getCategoryColor(node.categories, aliases);
+  const catColor = colorOf(node.slug);
 
   return (
     <div
@@ -187,17 +191,15 @@ function InfoPanel({
               {node.title}
             </h3>
             <div className="mt-1.5 flex items-center gap-2">
-              {node.categories.length > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ backgroundColor: catColor, boxShadow: `0 0 8px ${catColor}80` }}
-                  />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                    {node.categories[0]}
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: catColor, boxShadow: `0 0 8px ${catColor}80` }}
+                />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                  {groupLabel}
+                </span>
+              </div>
               <span className="text-[10px] text-[var(--muted-foreground)]">
                 {node.backlinkCount} · {node.wordCount}w
               </span>
@@ -256,8 +258,8 @@ function InfoPanel({
               <span
                 className="h-1.5 w-1.5 shrink-0 rounded-full transition-all duration-200 group-hover:scale-125"
                 style={{
-                  backgroundColor: getCategoryColor(n.categories, aliases),
-                  boxShadow: `0 0 6px ${getCategoryColor(n.categories, aliases)}60`,
+                  backgroundColor: colorOf(n.slug),
+                  boxShadow: `0 0 6px ${colorOf(n.slug)}60`,
                 }}
               />
               <span className="truncate font-display text-[0.85rem] text-[var(--foreground)]">
@@ -276,14 +278,12 @@ function InfoPanel({
 function NodeTooltip({
   node,
   position,
-  aliases,
 }: {
-  node: { label: string; categories: string[]; backlinkCount: number; wordCount: number } | null;
+  node: { label: string; group: string; color: string; backlinkCount: number; wordCount: number } | null;
   position: { x: number; y: number };
-  aliases: Record<string, TopicAliasConfig>;
 }) {
   if (!node) return null;
-  const catColor = getCategoryColor(node.categories, aliases);
+  const catColor = node.color;
 
   return (
     <div
@@ -296,17 +296,13 @@ function NodeTooltip({
         <span>·</span>
         <span>{node.wordCount} words</span>
       </div>
-      {node.categories.length > 0 && (
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ backgroundColor: catColor, boxShadow: `0 0 8px ${catColor}80` }}
-          />
-          <span className="text-[0.7rem] font-semibold text-[var(--muted-foreground)]">
-            {node.categories.join(", ")}
-          </span>
-        </div>
-      )}
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: catColor, boxShadow: `0 0 8px ${catColor}80` }}
+        />
+        <span className="text-[0.7rem] font-semibold text-[var(--muted-foreground)]">{node.group}</span>
+      </div>
     </div>
   );
 }
@@ -330,64 +326,97 @@ export function Component() {
   const config = useWikiConfig();
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const sigmaRef = useRef<SigmaLib | null>(null);
   const graphRef = useRef<Graph | null>(null);
   const hoveredRef = useRef<string | null>(null);
-  const selectedRef = useRef<string | null>(null);
   const focusedRef = useRef<string | null>(null);
+  const hiddenGroupsRef = useRef(new Set<string>());
+  const colorModeRef = useRef<ColorMode>("folder");
+  const replayRef = useRef<() => void>(() => {});
+  const highlightRef = useRef<(node: string | null) => void>(() => {});
   const [focusedSlug, setFocusedSlug] = useState<string | null>(null);
+  const [colorMode, setColorMode] = useState<ColorMode>("folder");
+  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
   const [tooltip, setTooltip] = useState<{
-    node: { label: string; categories: string[]; backlinkCount: number; wordCount: number };
+    node: { label: string; group: string; color: string; backlinkCount: number; wordCount: number };
     position: { x: number; y: number };
   } | null>(null);
   const [graphReady, setGraphReady] = useState(false);
 
-  // Build a lookup map for node data
-  const nodeMap = useRef(new Map<string, GraphNode>());
-  useEffect(() => {
-    const map = new Map<string, GraphNode>();
-    for (const n of data.nodes) map.set(n.slug, n);
-    nodeMap.current = map;
-  }, [data]);
+  const nodeMap = useMemo(() => new Map(data.nodes.map((n) => [n.slug, n])), [data]);
 
-  const focusedNode = focusedSlug ? nodeMap.current.get(focusedSlug) ?? null : null;
+  // Groups for the current color mode: name, color and size, biggest first.
+  const groups = useMemo(() => {
+    const sizes = new Map<string, number>();
+    for (const node of data.nodes) {
+      const key = groupKey(node, colorMode);
+      sizes.set(key, (sizes.get(key) ?? 0) + 1);
+    }
+    const colors =
+      colorMode === "folder"
+        ? assignGroupColors(sizes)
+        : new Map([...sizes.keys()].map((key) => [key, getTopicColor(key, config.categories.aliases)]));
+    return [...colors.entries()].map(([name, color]) => ({ name, color, count: sizes.get(name) ?? 0 }));
+  }, [colorMode, config.categories.aliases, data.nodes]);
+
+  const colorOf = useCallback(
+    (slug: string) => {
+      const node = nodeMap.get(slug);
+      if (!node) return DEFAULT_NODE_COLOR;
+      return groups.find((group) => group.name === groupKey(node, colorMode))?.color ?? DEFAULT_NODE_COLOR;
+    },
+    [colorMode, groups, nodeMap],
+  );
+
+  const focusedNode = focusedSlug ? nodeMap.get(focusedSlug) ?? null : null;
   const focusedNeighbors = focusedNode
     ? focusedNode.neighbors
-        .map((s) => nodeMap.current.get(s))
+        .map((s) => nodeMap.get(s))
         .filter((n): n is GraphNode => n !== undefined)
         .sort((a, b) => b.backlinkCount - a.backlinkCount)
     : [];
 
-  const handleSearchSelect = useCallback((slug: string) => {
+  const focusNode = useCallback((slug: string | null, zoom = true) => {
     focusedRef.current = slug;
     setFocusedSlug(slug);
-    sigmaRef.current?.refresh();
-  }, []);
-
-  const handleInfoClose = useCallback(() => {
-    focusedRef.current = null;
-    setFocusedSlug(null);
-    sigmaRef.current?.refresh();
-  }, []);
-
-  const handleInfoNeighborClick = useCallback((slug: string) => {
-    focusedRef.current = slug;
-    setFocusedSlug(slug);
-    sigmaRef.current?.refresh();
-    const pos = sigmaRef.current?.getNodeDisplayData(slug);
-    if (pos) {
-      sigmaRef.current?.getCamera().animate({ x: pos.x, y: pos.y, ratio: 0.5 }, { duration: 300 });
+    highlightRef.current(slug ?? hoveredRef.current);
+    const sigma = sigmaRef.current;
+    if (slug && zoom && sigma) {
+      const pos = sigma.getNodeDisplayData(slug);
+      if (pos) sigma.getCamera().animate({ x: pos.x, y: pos.y, ratio: 0.5 }, { duration: 500 });
     }
   }, []);
 
+  const handleSearchSelect = useCallback((slug: string) => focusNode(slug, false), [focusNode]);
+  const handleInfoClose = useCallback(() => focusNode(null), [focusNode]);
+  const handleInfoNeighborClick = useCallback((slug: string) => focusNode(slug), [focusNode]);
+
+  // Esc leaves focus mode.
   useEffect(() => {
-    if (!containerRef.current) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && focusedRef.current) focusNode(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusNode]);
 
-    const graph = buildGraph(data, config.categories.aliases);
-    runLayout(graph);
+  useEffect(() => {
+    const container = containerRef.current;
+    const overlay = overlayRef.current;
+    if (!container || !overlay) return;
+
+    const graph = buildGraph(data);
     graphRef.current = graph;
+    const layout = createLayout(graph);
+    let layoutTimer: ReturnType<typeof setTimeout> | undefined;
+    let bboxFrozen = false;
 
-    const sigma = new SigmaLib(graph, containerRef.current, {
+    // Highlight state, animated: `amount` eases toward `target` every frame.
+    const fx = { node: null as string | null, neighbors: new Set<string>(), amount: 0, target: 0 };
+    let frame = 0;
+
+    const sigma = new SigmaLib(graph, container, {
       allowInvalidContainer: true,
       renderLabels: true,
       renderEdgeLabels: false,
@@ -395,113 +424,255 @@ export function Component() {
       labelFont: '"Urbanist", -apple-system, BlinkMacSystemFont, sans-serif',
       labelSize: 11,
       labelWeight: "500",
-      labelRenderedSizeThreshold: 6,
+      labelRenderedSizeThreshold: 7,
       defaultEdgeColor: EDGE_DEFAULT,
       defaultEdgeType: "line",
       defaultNodeColor: DEFAULT_NODE_COLOR,
       stagePadding: 60,
-      edgeReducer(edge, data) {
-        const active = focusedRef.current ?? hoveredRef.current;
-        const res = { ...data };
-
-        if (active) {
-          const src = graph.source(edge);
-          const tgt = graph.target(edge);
-          if (src === active || tgt === active) {
-            res.color = EDGE_HOVER;
-            res.size = 1;
+      zIndex: true,
+      nodeReducer(node, attrs) {
+        const res = { ...attrs };
+        if (hiddenGroupsRef.current.has(groupKey(nodeMap.get(node)!, colorModeRef.current))) {
+          res.hidden = true;
+          return res;
+        }
+        const a = fx.amount;
+        if (fx.node && a > 0) {
+          if (node === fx.node) {
+            res.size = (attrs.size ?? 4) * (1 + 0.35 * a);
+            res.zIndex = 2;
+            res.forceLabel = true;
+          } else if (fx.neighbors.has(node)) {
+            res.zIndex = 1;
+            res.forceLabel = a > 0.5;
           } else {
-            res.hidden = true;
+            res.color = mixColor(attrs.color ?? DEFAULT_NODE_COLOR, FADED_NODE, a * 0.85);
+            res.zIndex = 0;
+            if (a > 0.3) res.label = "";
           }
         }
         return res;
       },
-      nodeReducer(node, data) {
-        const active = focusedRef.current ?? hoveredRef.current;
-        const selected = selectedRef.current;
-        const res = { ...data };
-
-        if (active) {
-          const isActive = node === active;
-          const isNeighbor = graph.hasEdge(active, node) || graph.hasEdge(node, active);
-
-          if (isActive) {
-            res.highlighted = true;
-            res.zIndex = 2;
-            res.size = (res.size ?? 4) * 1.3;
-          } else if (isNeighbor) {
-            res.zIndex = 1;
-            if (focusedRef.current) res.forceLabel = true;
+      edgeReducer(edge, attrs) {
+        const res = { ...attrs };
+        const src = graph.source(edge);
+        const tgt = graph.target(edge);
+        const hidden = hiddenGroupsRef.current;
+        const mode = colorModeRef.current;
+        if (hidden.has(groupKey(nodeMap.get(src)!, mode)) || hidden.has(groupKey(nodeMap.get(tgt)!, mode))) {
+          res.hidden = true;
+          return res;
+        }
+        const a = fx.amount;
+        if (fx.node && a > 0) {
+          if (src === fx.node || tgt === fx.node) {
+            res.color = mixColor(EDGE_DEFAULT, EDGE_ACTIVE, a);
+            res.size = 0.6 + 1.2 * a;
           } else {
-            res.color = "#e8e3d4";
-            res.label = "";
-            res.zIndex = 0;
+            res.color = mixColor(EDGE_DEFAULT, BG_COLOR, a * 0.8);
           }
         }
-
-        if (selected === node) {
-          res.highlighted = true;
-          res.zIndex = 3;
-          res.size = (res.size ?? 4) * 1.4;
-        }
-
         return res;
       },
     });
-
     sigmaRef.current = sigma;
     setGraphReady(true);
 
+    /* Overlay: particles along the active node's links (source → target) and a pulsing halo. */
+    const dpr = window.devicePixelRatio || 1;
+    const ctx = overlay.getContext("2d");
+    const resizeOverlay = () => {
+      overlay.width = overlay.clientWidth * dpr;
+      overlay.height = overlay.clientHeight * dpr;
+    };
+    resizeOverlay();
+    const resizeObserver = new ResizeObserver(resizeOverlay);
+    resizeObserver.observe(overlay);
+
+    const drawOverlay = (now: number) => {
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      const active = fx.node;
+      if (!active || fx.amount <= 0.01 || !graph.hasNode(active)) return;
+      const t = now / 1000;
+      const color = graph.getNodeAttribute(active, "color") as string;
+      const center = sigma.graphToViewport(graph.getNodeAttributes(active) as { x: number; y: number });
+
+      // Halo
+      const display = sigma.getNodeDisplayData(active);
+      const radius = display ? sigma.scaleSize(display.size) : 8;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, radius * (1.7 + 0.25 * Math.sin(t * 3)), 0, Math.PI * 2);
+      ctx.strokeStyle = `${color}${Math.round(90 * fx.amount).toString(16).padStart(2, "0")}`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Particles: move from the linking page to the linked page.
+      ctx.fillStyle = color;
+      graph.forEachEdge(active, (edge, _attrs, source, target) => {
+        const from = sigma.graphToViewport(graph.getNodeAttributes(source) as { x: number; y: number });
+        const to = sigma.graphToViewport(graph.getNodeAttributes(target) as { x: number; y: number });
+        const length = Math.hypot(to.x - from.x, to.y - from.y);
+        const count = Math.max(1, Math.min(4, Math.round(length / 120)));
+        for (let k = 0; k < count; k++) {
+          const p = (t * 0.45 + k / count + edgePhase(edge)) % 1;
+          ctx.globalAlpha = fx.amount * Math.sin(p * Math.PI) * 0.9;
+          ctx.beginPath();
+          ctx.arc(from.x + (to.x - from.x) * p, from.y + (to.y - from.y) * p, 2.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+      ctx.globalAlpha = 1;
+    };
+
+    const tick = (now: number) => {
+      fx.amount += (fx.target - fx.amount) * 0.2;
+      if (Math.abs(fx.target - fx.amount) < 0.01) fx.amount = fx.target;
+      if (fx.amount === 0 && fx.target === 0) fx.node = null;
+      sigma.refresh({ skipIndexation: true });
+      drawOverlay(now);
+      frame = fx.node ? requestAnimationFrame(tick) : 0;
+    };
+    const highlight = (node: string | null) => {
+      if (node) {
+        if (fx.node !== node) {
+          fx.node = node;
+          fx.neighbors = new Set(graph.neighbors(node));
+          if (fx.amount > 0.5) fx.amount = 0.5; // re-ease when jumping between nodes
+        }
+        fx.target = 1;
+      } else {
+        fx.target = 0;
+      }
+      if (!frame) frame = requestAnimationFrame(tick);
+    };
+    highlightRef.current = highlight;
+
+    /* Live layout: the graph blooms out of its folder clusters, then settles. */
+    const runLayoutFor = (ms: number) => {
+      clearTimeout(layoutTimer);
+      if (!layout.isRunning()) layout.start();
+      layoutTimer = setTimeout(() => {
+        layout.stop();
+        if (!bboxFrozen) {
+          // Freeze the viewport once settled so dragging a node doesn't rescale everything.
+          sigma.setCustomBBox(sigma.getBBox());
+          bboxFrozen = true;
+        }
+      }, ms);
+    };
+    replayRef.current = () => {
+      layout.stop();
+      const folders = [...new Set(data.nodes.map((n) => folderGroup(n.slug)))];
+      graph.updateEachNodeAttributes((slug, attrs) => ({
+        ...attrs,
+        ...seedPosition(folders.indexOf(folderGroup(slug)), folders.length),
+      }));
+      sigma.setCustomBBox(null);
+      bboxFrozen = false;
+      sigma.getCamera().animatedReset({ duration: 300 });
+      runLayoutFor(5000);
+    };
+    runLayoutFor(5000);
+
+    /* Drag nodes; the physics pulls their neighbors along. */
+    let dragged: string | null = null;
+    let dragMoved = false;
+    sigma.on("downNode", ({ node }) => {
+      dragged = node;
+      dragMoved = false;
+      graph.setNodeAttribute(node, "fixed", true);
+    });
+    sigma.on("moveBody", ({ event }) => {
+      if (!dragged) return;
+      const pos = sigma.viewportToGraph(event);
+      graph.mergeNodeAttributes(dragged, { x: pos.x, y: pos.y });
+      if (!dragMoved) {
+        dragMoved = true;
+        setTooltip(null);
+        clearTimeout(layoutTimer);
+        if (!layout.isRunning()) layout.start();
+      }
+      highlight(dragged);
+      event.preventSigmaDefault();
+      event.original.preventDefault();
+      event.original.stopPropagation();
+    });
+    const release = () => {
+      if (!dragged) return;
+      graph.removeNodeAttribute(dragged, "fixed");
+      dragged = null;
+      if (dragMoved) runLayoutFor(2500);
+    };
+    sigma.on("upNode", release);
+    sigma.on("upStage", release);
+
     sigma.on("enterNode", ({ node }) => {
       hoveredRef.current = node;
-      sigma.refresh();
-      containerRef.current!.style.cursor = "pointer";
+      if (!focusedRef.current) highlight(node);
+      container.style.cursor = "pointer";
     });
-
     sigma.on("leaveNode", () => {
       hoveredRef.current = null;
-      sigma.refresh();
+      if (!focusedRef.current && !dragged) highlight(null);
       setTooltip(null);
-      containerRef.current!.style.cursor = "default";
+      container.style.cursor = "default";
     });
 
     sigma.on("clickNode", ({ node }) => {
+      if (dragMoved) {
+        dragMoved = false;
+        return;
+      }
       const focused = focusedRef.current;
-
-      if (focused === node) {
+      if (focused === node || (focused && graph.areNeighbors(focused, node))) {
         navigate(`/wiki/${node}`);
         return;
       }
-
-      if (focused && (graph.hasEdge(focused, node) || graph.hasEdge(node, focused))) {
-        navigate(`/wiki/${node}`);
-        return;
-      }
-
-      focusedRef.current = node;
-      setFocusedSlug(node);
-      sigma.refresh();
-
-      const pos = sigma.getNodeDisplayData(node);
-      if (pos) {
-        sigma.getCamera().animate({ x: pos.x, y: pos.y, ratio: 0.5 }, { duration: 300 });
-      }
+      focusNode(node);
     });
-
     sigma.on("clickStage", () => {
-      if (focusedRef.current) {
-        focusedRef.current = null;
-        setFocusedSlug(null);
-        sigma.refresh();
-      }
+      if (focusedRef.current) focusNode(null);
     });
+
+    // Keep the overlay in sync while the camera moves (pan/zoom) and nothing is highlighted-animating.
+    const onCamera = () => {
+      if (!frame) drawOverlay(performance.now());
+    };
+    sigma.getCamera().on("updated", onCamera);
 
     return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(layoutTimer);
+      resizeObserver.disconnect();
+      layout.kill();
       sigma.kill();
       sigmaRef.current = null;
       graphRef.current = null;
     };
-  }, [config.categories.aliases, data, navigate]);
+  }, [data, navigate, nodeMap, focusNode]);
+
+  // Recolor nodes when the color mode or its groups change.
+  useEffect(() => {
+    colorModeRef.current = colorMode;
+    const graph = graphRef.current;
+    if (!graph || !graphReady) return;
+    graph.updateEachNodeAttributes((slug, attrs) => ({ ...attrs, color: colorOf(slug) }));
+  }, [colorMode, colorOf, graphReady]);
+
+  useEffect(() => {
+    hiddenGroupsRef.current = hiddenGroups;
+    sigmaRef.current?.refresh();
+  }, [hiddenGroups]);
+
+  const toggleGroup = (name: string) =>
+    setHiddenGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
 
   // Tooltip tracking
   useEffect(() => {
@@ -515,20 +686,23 @@ export function Component() {
         return;
       }
       const attrs = graphRef.current.getNodeAttributes(hovered);
+      const node = nodeMap.get(hovered);
+      const rect = container.getBoundingClientRect();
       setTooltip({
         node: {
           label: attrs.label,
-          categories: attrs.categories ?? [],
+          group: node ? groupKey(node, colorModeRef.current) : "",
+          color: attrs.color ?? DEFAULT_NODE_COLOR,
           backlinkCount: attrs.backlinkCount ?? 0,
           wordCount: attrs.wordCount ?? 0,
         },
-        position: { x: e.clientX, y: e.clientY },
+        position: { x: e.clientX - rect.left, y: e.clientY - rect.top },
       });
     };
 
     container.addEventListener("mousemove", handleMouseMove);
     return () => container.removeEventListener("mousemove", handleMouseMove);
-  }, []);
+  }, [nodeMap]);
 
   return (
     <div className="fixed inset-0" style={{ background: BG_COLOR }}>
@@ -572,7 +746,6 @@ export function Component() {
         <NodeTooltip
           node={tooltip?.node ?? null}
           position={tooltip?.position ?? { x: 0, y: 0 }}
-          aliases={config.categories.aliases}
         />
       )}
 
@@ -584,12 +757,81 @@ export function Component() {
           onClose={handleInfoClose}
           onClickNeighbor={handleInfoNeighborClick}
           onNavigate={(slug) => navigate(`/wiki/${slug}`)}
-          aliases={config.categories.aliases}
+          colorOf={colorOf}
+          groupLabel={groupKey(focusedNode, colorMode)}
         />
       )}
 
-      {/* Sigma canvas */}
+      {/* Sigma canvas + animation overlay (particles, halo) */}
       <div ref={containerRef} className="h-full w-full" />
+      <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+
+      {/* Legend: color mode + groups (click to hide/show) */}
+      <div className="surface-raised absolute bottom-4 left-4 z-10 max-w-[calc(100%-2rem)] rounded-2xl px-3 py-2.5 sm:max-w-sm">
+        <div className="mb-2 flex items-center gap-1 text-[0.7rem] font-medium">
+          <span className="mr-1 uppercase tracking-wider text-[var(--muted-foreground)]">Color</span>
+          {(["folder", "topic"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => {
+                setHiddenGroups(new Set());
+                setColorMode(mode);
+              }}
+              aria-pressed={colorMode === mode}
+              className={`rounded-full px-2.5 py-1 transition-colors duration-150 ${
+                colorMode === mode
+                  ? "bg-[var(--foreground)] text-[var(--background)]"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--secondary)]"
+              }`}
+            >
+              {mode === "folder" ? "Folder" : "Topic"}
+            </button>
+          ))}
+        </div>
+        <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto">
+          {groups.map((group) => {
+            const hidden = hiddenGroups.has(group.name);
+            return (
+              <button
+                key={group.name}
+                type="button"
+                onClick={() => toggleGroup(group.name)}
+                aria-pressed={!hidden}
+                title={hidden ? `Show ${group.name}` : `Hide ${group.name}`}
+                className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs transition-[opacity,background-color] duration-150 hover:bg-[var(--secondary)] ${
+                  hidden ? "opacity-40" : ""
+                }`}
+              >
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: group.color }} />
+                <span className="text-[var(--foreground)]">{group.name}</span>
+                <span className="tabular-nums text-[var(--muted-foreground)]">{group.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Camera + animation controls */}
+      <div className="surface-raised absolute bottom-4 right-4 z-10 flex flex-col overflow-hidden rounded-2xl">
+        {[
+          { label: "Zoom in", icon: Plus, action: () => sigmaRef.current?.getCamera().animatedZoom({ duration: 300 }) },
+          { label: "Zoom out", icon: Minus, action: () => sigmaRef.current?.getCamera().animatedUnzoom({ duration: 300 }) },
+          { label: "Fit graph", icon: Maximize2, action: () => sigmaRef.current?.getCamera().animatedReset({ duration: 400 }) },
+          { label: "Replay layout", icon: RotateCcw, action: () => replayRef.current() },
+        ].map(({ label, icon: Icon, action }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={action}
+            aria-label={label}
+            title={label}
+            className="p-2.5 text-[var(--muted-foreground)] transition-colors duration-150 hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
+          >
+            <Icon className="h-4 w-4" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
