@@ -1,5 +1,6 @@
-import { useLoaderData, Link, redirect } from "react-router-dom";
+import { useLoaderData, redirect } from "react-router-dom";
 
+import { SiteHeader, SiteNav } from "@/client/app-shell";
 import { useWikiConfig } from "@/client/wiki-config";
 import type { WikiStats } from "@/lib/wiki-shared";
 import { ChangeVaultLink } from "@/components/change-vault-link";
@@ -57,11 +58,7 @@ export function Component() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:gap-3 sm:px-6 sm:pb-4 sm:pt-[calc(env(safe-area-inset-top)+1.25rem)]">
-        <Link to="/" className="font-display text-lg text-[var(--foreground)] sm:text-xl">
-          {config.siteTitle}
-        </Link>
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
+      <SiteHeader>
           <span className="surface flex items-center gap-1.5 rounded-full px-3 py-2 text-xs text-[var(--muted-foreground)] sm:gap-2 sm:px-3.5">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--teal)]" />
             <span className="font-semibold tabular-nums text-[var(--foreground)]">
@@ -69,12 +66,9 @@ export function Component() {
             </span>
             <span className="hidden sm:inline">articles</span>
           </span>
-          <span className="rounded-full bg-[var(--foreground)] px-3.5 py-2 text-sm font-medium text-[var(--background)] sm:px-4">
-            {config.navigation.statsLabel}
-          </span>
+          <SiteNav current="stats" />
           <ChangeVaultLink />
-        </div>
-      </header>
+      </SiteHeader>
 
       <main
         className="mx-auto w-full max-w-4xl px-4 pt-6 sm:px-6 sm:pt-10 lg:px-8"

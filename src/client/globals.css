@@ -310,3 +310,55 @@ html {
     transform: none;
   }
 }
+
+/* ── App shell: docked page tree (see src/client/app-shell.tsx) ── */
+:root {
+  --sidebar-offset: 0px;
+}
+
+.app-sidebar {
+  display: none;
+}
+
+.app-content {
+  padding-left: var(--sidebar-offset);
+}
+
+@media (min-width: 1024px) {
+  html[data-sidebar="open"] {
+    --sidebar-offset: 18rem;
+  }
+
+  html[data-sidebar="open"] .app-sidebar {
+    display: flex;
+  }
+
+  html[data-sidebar="open"] .hide-when-docked {
+    display: none;
+  }
+}
+
+/* Article "On this page": beside the article where it fits, above it otherwise. */
+.toc-aside {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  html:not([data-sidebar="open"]) .toc-aside {
+    display: block;
+  }
+
+  html:not([data-sidebar="open"]) .toc-inline {
+    display: none;
+  }
+}
+
+@media (min-width: 1536px) {
+  .toc-aside {
+    display: block;
+  }
+
+  .toc-inline {
+    display: none;
+  }
+}

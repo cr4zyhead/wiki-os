@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, redirect, useLoaderData, useNavigate } from "react-router-dom";
+import { redirect, useLoaderData, useNavigate } from "react-router-dom";
 import Graph from "graphology";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import SigmaLib from "sigma";
 
+import { SiteHeader, SiteNav } from "@/client/app-shell";
 import { useWikiConfig } from "@/client/wiki-config";
 import { getTopicColor, type TopicAliasConfig } from "@/lib/wiki-config";
 import type { GraphData, GraphNode } from "@/lib/wiki-shared";
@@ -531,13 +532,9 @@ export function Component() {
   }, []);
 
   return (
-    <div className="fixed inset-0" style={{ background: BG_COLOR }}>
+    <div className="fixed inset-0" style={{ background: BG_COLOR, left: "var(--sidebar-offset)" }}>
       {/* Header */}
-      <header className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:gap-3 sm:px-6 sm:pb-4 sm:pt-[calc(env(safe-area-inset-top)+1.25rem)]">
-        <Link to="/" className="font-display text-lg text-[var(--foreground)] sm:text-xl">
-          {config.siteTitle}
-        </Link>
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
+      <SiteHeader className="absolute left-0 right-0 top-0 z-10">
           <span className="surface hidden items-center gap-2 rounded-full px-3.5 py-2 text-xs text-[var(--muted-foreground)] sm:flex">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--lavender)]" />
             <span className="font-semibold tabular-nums text-[var(--foreground)]">
@@ -550,15 +547,8 @@ export function Component() {
             </span>
             <span>{config.navigation.connectionsLabel}</span>
           </span>
-          <Link
-            to="/"
-            className="surface rounded-full px-3.5 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
-          >
-            <span className="sm:hidden">Back</span>
-            <span className="hidden sm:inline">{config.navigation.backToWikiLabel}</span>
-          </Link>
-        </div>
-      </header>
+          <SiteNav current="graph" />
+      </SiteHeader>
 
       {/* Search */}
       <GraphSearch

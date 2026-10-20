@@ -10,13 +10,12 @@ import {
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import { PanelLeft, Search } from "lucide-react";
 
 import { useWikiConfig } from "@/client/wiki-config";
 import { getTopicColor, type TopicAliasConfig } from "@/lib/wiki-config";
 import type { WikiHeading, WikiNeighbor, WikiPageData } from "@/lib/wiki-shared";
 import { usePersonImage } from "@/client/use-person-image";
-import { FileTree, FileTreeDrawer, useFileTreeState } from "@/components/file-tree";
+import { SiteHeader, SiteNav, useAppShell } from "@/client/app-shell";
 import { folderPathsForSlug } from "@/lib/file-tree";
 
 import { fetchJson, isSetupRequiredResponse } from "../api";
@@ -466,18 +465,9 @@ export function Component() {
   const portraitUrl = usePersonImage(page.isPerson ? page.title : null);
   const [personOverrideError, setPersonOverrideError] = useState<string | null>(null);
   const [isUpdatingPerson, setIsUpdatingPerson] = useState(false);
-  const { expanded, setFolder } = useFileTreeState(page.slug);
-  const [treeDrawerOpen, setTreeDrawerOpen] = useState(false);
-  const closeTreeDrawer = useCallback(() => setTreeDrawerOpen(false), []);
+  // Breadcrumb folders reveal themselves in the page tree.
+  const { revealFolder } = useAppShell();
   const folderPaths = folderPathsForSlug(page.slug);
-
-  // Breadcrumb folders reveal themselves in the tree (opening the drawer when there is no sidebar).
-  function revealFolder(path: string) {
-    setFolder(path, true);
-    if (!window.matchMedia("(min-width: 1280px)").matches) {
-      setTreeDrawerOpen(true);
-    }
-  }
 
   // Scroll to top whenever the article slug changes
   useEffect(() => {
@@ -529,44 +519,9 @@ export function Component() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:gap-3 sm:px-6 sm:pb-4 sm:pt-[calc(env(safe-area-inset-top)+1.25rem)]">
-        <div className="flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setTreeDrawerOpen(true)}
-            aria-label="Browse pages"
-            className="surface rounded-full p-2 text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] xl:hidden"
-          >
-            <PanelLeft className="h-4 w-4" />
-          </button>
-          <Link to="/" className="truncate font-display text-lg text-[var(--foreground)] sm:text-xl">
-            {config.siteTitle}
-          </Link>
-        </div>
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
-          <Link
-            to="/"
-            state={{ focusSearch: true }}
-            aria-label="Search"
-            className="surface flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
-          >
-            <Search aria-hidden className="h-4 w-4" />
-            <kbd className="hidden font-sans text-xs text-[var(--muted-foreground)] sm:inline">⌘K</kbd>
-          </Link>
-          <Link
-            to="/graph"
-            className="surface rounded-full px-3.5 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
-          >
-            {config.navigation.graphLabel}
-          </Link>
-          <Link
-            to="/stats"
-            className="surface rounded-full px-3.5 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
-          >
-            {config.navigation.statsLabel}
-          </Link>
-        </div>
-      </header>
+      <SiteHeader>
+        <SiteNav />
+      </SiteHeader>
 
       <main
         className="animate-in mx-auto w-full max-w-3xl px-4 pt-4 sm:px-6 sm:pt-8 lg:px-8"
@@ -658,7 +613,7 @@ export function Component() {
 
         {/* Mobile TOC */}
         {filteredHeadings.length > 0 && (
-          <div className="mb-6 lg:hidden rounded-lg border border-[var(--border)] bg-white px-4 py-3">
+          <div className="toc-inline mb-6 rounded-lg border border-[var(--border)] bg-white px-4 py-3">
             <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
               On this page
             </p>
@@ -736,15 +691,8 @@ export function Component() {
             </section>
           )}
 
-          {/* Desktop file tree */}
-          <aside className="hidden xl:block absolute -left-64 top-0 bottom-0 w-56 2xl:-left-[22rem] 2xl:w-72">
-            <div className="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto pr-1">
-              <FileTree currentSlug={page.slug} expanded={expanded} setFolder={setFolder} />
-            </div>
-          </aside>
-
           {/* Desktop sidebar — TOC + mini graph */}
-          <aside className="hidden xl:block absolute -right-60 top-0 w-52">
+          <aside className="toc-aside absolute -right-60 top-0 bottom-0 w-52">
             <div className="sticky top-8">
               {filteredHeadings.length > 0 && (
                 <TableOfContents headings={filteredHeadings} activeId={activeId} />
@@ -762,15 +710,6 @@ export function Component() {
           </aside>
         </div>
       </main>
-
-      <FileTreeDrawer open={treeDrawerOpen} onClose={closeTreeDrawer}>
-        <FileTree
-          currentSlug={page.slug}
-          expanded={expanded}
-          setFolder={setFolder}
-          onNavigate={closeTreeDrawer}
-        />
-      </FileTreeDrawer>
 
       <footer className="pb-16" />
     </div>
