@@ -84,9 +84,12 @@ function splitBrandTitle(title: string) {
 
 export function SearchBox({
   totalPages,
+  headerStart,
   children,
 }: {
   totalPages: number;
+  /** Rendered before the site title in the header (e.g. the page-tree button). */
+  headerStart?: ReactNode;
   children: ReactNode;
 }) {
   const config = useWikiConfig();
@@ -211,18 +214,21 @@ export function SearchBox({
   return (
     <div className="relative flex min-h-screen flex-col">
       <header className="relative flex items-center justify-between gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:gap-3 sm:px-6 sm:pb-4 sm:pt-[calc(env(safe-area-inset-top)+1.25rem)]">
-        <Link
-          to="/"
-          className={`font-display text-lg text-[var(--foreground)] transition-opacity duration-200 sm:text-xl ${
-            showResults ? "opacity-100" : "opacity-0 pointer-events-none"
-          }`}
-          onClick={(event) => {
-            event.preventDefault();
-            resetSearch();
-          }}
-        >
-          {config.siteTitle}
-        </Link>
+        <div className="flex min-w-0 items-center gap-2">
+          {headerStart}
+          <Link
+            to="/"
+            className={`font-display text-lg text-[var(--foreground)] transition-opacity duration-200 sm:text-xl ${
+              showResults ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
+            onClick={(event) => {
+              event.preventDefault();
+              resetSearch();
+            }}
+          >
+            {config.siteTitle}
+          </Link>
+        </div>
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           <button
             type="button"

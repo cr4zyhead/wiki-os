@@ -216,7 +216,7 @@ export function FileTreeDrawer({ open, onClose, children }: { open: boolean; onC
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-modal="true" aria-label="Pages">
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Pages">
       <button type="button" aria-label="Close pages" onClick={onClose} className="absolute inset-0 bg-black/20" />
       <div className="absolute inset-y-0 left-0 flex w-[min(20rem,85vw)] flex-col bg-[var(--background)] shadow-xl">
         <div className="flex items-center justify-between px-4 pb-2 pt-[calc(env(safe-area-inset-top)+1rem)]">
