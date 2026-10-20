@@ -406,9 +406,45 @@ export function Component() {
     let layoutTimer: ReturnType<typeof setTimeout> | undefined;
     let bboxFrozen = false;
 
-    // Highlight state, animated: `amount` eases toward `target` every frame.
-    const fx = { node: null as string | null, neighbors: new Set<string>(), amount: 0, target: 0 };
+    /*
+     * Hover/focus "physics": a damped spring drives `amount` toward `target` (so it overshoots and
+     * settles). While active, neighbors are pulled toward the center of attention and unrelated
+     * nodes close to it are pushed away; everything springs back on leave. Only display positions
+     * change (via the reducers), never the stored layout.
+     */
+    const fx = {
+      key: null as string | null,
+      active: new Set<string>(), // the hovered node, or both ends of a hovered link
+      neighbors: new Set<string>(),
+      edges: [] as string[], // links that get particles
+      center: { x: 0, y: 0 },
+      radius: 1, // graph units within which unrelated nodes get pushed away
+      amount: 0,
+      velocity: 0,
+      target: 0,
+    };
     let frame = 0;
+
+    const position = (node: string) => graph.getNodeAttributes(node) as { x: number; y: number };
+
+    /** Display offset for a node under the current highlight (graph coordinates). */
+    const displaced = (node: string, x: number, y: number) => {
+      const s = fx.amount;
+      if (!fx.key || s === 0) return { x, y };
+      const dx = fx.center.x - x;
+      const dy = fx.center.y - y;
+      if (fx.active.has(node)) {
+        // Ends of a hovered link lean toward each other; a hovered node stays put.
+        return fx.active.size > 1 ? { x: x + dx * 0.12 * s, y: y + dy * 0.12 * s } : { x, y };
+      }
+      if (fx.neighbors.has(node)) {
+        return { x: x + dx * 0.16 * s, y: y + dy * 0.16 * s };
+      }
+      const distance = Math.hypot(dx, dy);
+      if (distance === 0 || distance > fx.radius) return { x, y };
+      const push = (1 - distance / fx.radius) * fx.radius * 0.08 * s;
+      return { x: x - (dx / distance) * push, y: y - (dy / distance) * push };
+    };
 
     const sigma = new SigmaLib(graph, container, {
       allowInvalidContainer: true,
@@ -424,19 +460,23 @@ export function Component() {
       defaultNodeColor: DEFAULT_NODE_COLOR,
       stagePadding: 60,
       zIndex: true,
+      enableEdgeEvents: true,
       nodeReducer(node, attrs) {
         const res = { ...attrs };
         if (hiddenGroupsRef.current.has(groupKey(nodeMap.get(node)!, colorModeRef.current))) {
           res.hidden = true;
           return res;
         }
-        const a = fx.amount;
-        if (fx.node && a > 0) {
-          if (node === fx.node) {
-            res.size = (attrs.size ?? 4) * (1 + 0.35 * a);
+        const s = fx.amount; // may overshoot 1 (spring); colors use the clamped value
+        const a = Math.min(1, Math.max(0, s));
+        if (fx.key && s !== 0) {
+          Object.assign(res, displaced(node, attrs.x, attrs.y));
+          if (fx.active.has(node)) {
+            res.size = (attrs.size ?? 4) * (1 + 0.5 * s);
             res.zIndex = 2;
             res.forceLabel = true;
           } else if (fx.neighbors.has(node)) {
+            res.size = (attrs.size ?? 4) * (1 + 0.15 * s);
             res.zIndex = 1;
             res.forceLabel = a > 0.5;
           } else {
@@ -457,11 +497,12 @@ export function Component() {
           res.hidden = true;
           return res;
         }
-        const a = fx.amount;
-        if (fx.node && a > 0) {
-          if (src === fx.node || tgt === fx.node) {
+        const a = Math.min(1, Math.max(0, fx.amount));
+        if (fx.key && a > 0) {
+          if (fx.edges.includes(edge)) {
             res.color = mixColor(EDGE_DEFAULT, EDGE_ACTIVE, a);
-            res.size = 0.6 + 1.2 * a;
+            res.size = 0.6 + 1.4 * a;
+            res.zIndex = 1;
           } else {
             res.color = mixColor(EDGE_DEFAULT, BG_COLOR, a * 0.8);
           }
@@ -487,59 +528,104 @@ export function Component() {
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, overlay.width, overlay.height);
-      const active = fx.node;
-      if (!active || fx.amount <= 0.01 || !graph.hasNode(active)) return;
+      const a = Math.min(1, Math.max(0, fx.amount));
+      if (!fx.key || a <= 0.01) return;
       const t = now / 1000;
-      const color = graph.getNodeAttribute(active, "color") as string;
-      const center = sigma.graphToViewport(graph.getNodeAttributes(active) as { x: number; y: number });
+      // Screen position of a node as currently displayed (after the hover displacement).
+      const onScreen = (node: string) => {
+        const display = sigma.getNodeDisplayData(node);
+        return display ? sigma.framedGraphToViewport(display) : sigma.graphToViewport(position(node));
+      };
 
-      // Halo
-      const display = sigma.getNodeDisplayData(active);
-      const radius = display ? sigma.scaleSize(display.size) : 8;
-      ctx.beginPath();
-      ctx.arc(center.x, center.y, radius * (1.7 + 0.25 * Math.sin(t * 3)), 0, Math.PI * 2);
-      ctx.strokeStyle = `${color}${Math.round(90 * fx.amount).toString(16).padStart(2, "0")}`;
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      // Halo on each active node
+      for (const node of fx.active) {
+        if (!graph.hasNode(node)) continue;
+        const color = graph.getNodeAttribute(node, "color") as string;
+        const center = onScreen(node);
+        const display = sigma.getNodeDisplayData(node);
+        const radius = display ? sigma.scaleSize(display.size) : 8;
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, radius * (1.6 + 0.25 * Math.sin(t * 3)), 0, Math.PI * 2);
+        ctx.strokeStyle = `${color}${Math.round(90 * a).toString(16).padStart(2, "0")}`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
 
       // Particles: move from the linking page to the linked page.
-      ctx.fillStyle = color;
-      graph.forEachEdge(active, (edge, _attrs, source, target) => {
-        const from = sigma.graphToViewport(graph.getNodeAttributes(source) as { x: number; y: number });
-        const to = sigma.graphToViewport(graph.getNodeAttributes(target) as { x: number; y: number });
+      for (const edge of fx.edges) {
+        if (!graph.hasEdge(edge)) continue;
+        const source = graph.source(edge);
+        const from = onScreen(source);
+        const to = onScreen(graph.target(edge));
+        ctx.fillStyle = graph.getNodeAttribute(source, "color") as string;
         const length = Math.hypot(to.x - from.x, to.y - from.y);
         const count = Math.max(1, Math.min(4, Math.round(length / 120)));
         for (let k = 0; k < count; k++) {
           const p = (t * 0.45 + k / count + edgePhase(edge)) % 1;
-          ctx.globalAlpha = fx.amount * Math.sin(p * Math.PI) * 0.9;
+          ctx.globalAlpha = a * Math.sin(p * Math.PI) * 0.9;
           ctx.beginPath();
           ctx.arc(from.x + (to.x - from.x) * p, from.y + (to.y - from.y) * p, 2.4, 0, Math.PI * 2);
           ctx.fill();
         }
-      });
+      }
       ctx.globalAlpha = 1;
     };
 
+    let springSettled = true;
     const tick = (now: number) => {
-      fx.amount += (fx.target - fx.amount) * 0.2;
-      if (Math.abs(fx.target - fx.amount) < 0.01) fx.amount = fx.target;
-      if (fx.amount === 0 && fx.target === 0) fx.node = null;
-      sigma.refresh({ skipIndexation: true });
+      // Damped spring (stiffness 0.14, damping 0.72): overshoots a little, then settles.
+      fx.velocity = (fx.velocity + (fx.target - fx.amount) * 0.14) * 0.72;
+      fx.amount += fx.velocity;
+      const settled = Math.abs(fx.target - fx.amount) < 0.002 && Math.abs(fx.velocity) < 0.002;
+      if (settled) {
+        fx.amount = fx.target;
+        fx.velocity = 0;
+        if (fx.target === 0) fx.key = null;
+      }
+      // Re-index (hover hit-testing) only once the motion settles; cheap refreshes while moving.
+      sigma.refresh(settled && !springSettled ? undefined : { skipIndexation: true });
+      springSettled = settled;
       drawOverlay(now);
-      frame = fx.node ? requestAnimationFrame(tick) : 0;
+      frame = fx.key ? requestAnimationFrame(tick) : 0;
     };
-    const highlight = (node: string | null) => {
-      if (node) {
-        if (fx.node !== node) {
-          fx.node = node;
-          fx.neighbors = new Set(graph.neighbors(node));
-          if (fx.amount > 0.5) fx.amount = 0.5; // re-ease when jumping between nodes
+
+    const start = (key: string, active: string[], neighbors: string[], edges: string[]) => {
+      if (fx.key !== key) {
+        fx.key = key;
+        fx.active = new Set(active);
+        fx.neighbors = new Set(neighbors.filter((n) => !fx.active.has(n)));
+        fx.edges = edges;
+        // Push radius: a fifth of the graph's extent.
+        const xs = graph.mapNodes((_n, attrs) => attrs.x as number);
+        const ys = graph.mapNodes((_n, attrs) => attrs.y as number);
+        fx.radius = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) / 5 || 1;
+        if (fx.amount > 0.4) {
+          fx.amount = 0.4; // re-spring when jumping between targets
+          fx.velocity = 0;
         }
-        fx.target = 1;
+      }
+      // Recomputed on every call so the pull follows a node being dragged.
+      const points = active.map(position);
+      fx.center = {
+        x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+        y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
+      };
+      fx.target = 1;
+      springSettled = false;
+      if (!frame) frame = requestAnimationFrame(tick);
+    };
+
+    const highlight = (node: string | null) => {
+      if (node && graph.hasNode(node)) {
+        start(`node:${node}`, [node], graph.neighbors(node), graph.edges(node));
       } else {
         fx.target = 0;
+        springSettled = false;
+        if (!frame && fx.key) frame = requestAnimationFrame(tick);
       }
-      if (!frame) frame = requestAnimationFrame(tick);
+    };
+    const highlightEdge = (edge: string) => {
+      start(`edge:${edge}`, [graph.source(edge), graph.target(edge)], [], [edge]);
     };
     highlightRef.current = highlight;
 
@@ -612,6 +698,20 @@ export function Component() {
       if (!focusedRef.current && !dragged) highlight(null);
       setTooltip(null);
       container.style.cursor = "default";
+    });
+    sigma.on("enterEdge", ({ edge }) => {
+      if (focusedRef.current || dragged || hoveredRef.current) return;
+      highlightEdge(edge);
+      container.style.cursor = "pointer";
+    });
+    sigma.on("leaveEdge", () => {
+      if (focusedRef.current || dragged || hoveredRef.current) return;
+      highlight(null);
+      container.style.cursor = "default";
+    });
+    // Clicking a link focuses the page it comes from.
+    sigma.on("clickEdge", ({ edge }) => {
+      if (!dragMoved) focusNode(graph.source(edge));
     });
 
     sigma.on("clickNode", ({ node }) => {
