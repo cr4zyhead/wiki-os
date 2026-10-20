@@ -409,8 +409,9 @@ export function Component() {
     /*
      * Hover/focus "physics": a damped spring drives `amount` toward `target` (so it overshoots and
      * settles). While active, neighbors are pulled toward the center of attention and unrelated
-     * nodes close to it are pushed away; everything springs back on leave. Only display positions
-     * change (via the reducers), never the stored layout.
+     * nodes close to it are pushed away; everything springs back on leave.
+     * Sigma ignores x/y from reducers, so the offsets are written to the graph from a snapshot of
+     * resting positions (`home`) and restored exactly afterwards. Skipped while the layout runs.
      */
     const fx = {
       key: null as string | null,
@@ -425,7 +426,16 @@ export function Component() {
     };
     let frame = 0;
 
-    const position = (node: string) => graph.getNodeAttributes(node) as { x: number; y: number };
+    const home = new Map<string, { x: number; y: number }>();
+    const position = (node: string) =>
+      home.get(node) ?? (graph.getNodeAttributes(node) as { x: number; y: number });
+
+    const restoreHome = () => {
+      for (const [node, p] of home) {
+        if (graph.hasNode(node)) graph.mergeNodeAttributes(node, p);
+      }
+      home.clear();
+    };
 
     /** Display offset for a node under the current highlight (graph coordinates). */
     const displaced = (node: string, x: number, y: number) => {
@@ -470,7 +480,6 @@ export function Component() {
         const s = fx.amount; // may overshoot 1 (spring); colors use the clamped value
         const a = Math.min(1, Math.max(0, s));
         if (fx.key && s !== 0) {
-          Object.assign(res, displaced(node, attrs.x, attrs.y));
           if (fx.active.has(node)) {
             res.size = (attrs.size ?? 4) * (1 + 0.5 * s);
             res.zIndex = 2;
@@ -571,6 +580,21 @@ export function Component() {
       ctx.globalAlpha = 1;
     };
 
+    const applyDisplacement = () => {
+      if (layout.isRunning()) {
+        restoreHome();
+        return;
+      }
+      if (home.size === 0) {
+        graph.forEachNode((node, attrs) => home.set(node, { x: attrs.x as number, y: attrs.y as number }));
+      }
+      for (const [node, p] of home) {
+        const target = displaced(node, p.x, p.y);
+        const current = graph.getNodeAttributes(node);
+        if (current.x !== target.x || current.y !== target.y) graph.mergeNodeAttributes(node, target);
+      }
+    };
+
     let springSettled = true;
     const tick = (now: number) => {
       // Damped spring (stiffness 0.14, damping 0.72): overshoots a little, then settles.
@@ -580,7 +604,12 @@ export function Component() {
       if (settled) {
         fx.amount = fx.target;
         fx.velocity = 0;
-        if (fx.target === 0) fx.key = null;
+      }
+      if (settled && fx.target === 0) {
+        restoreHome();
+        fx.key = null;
+      } else {
+        applyDisplacement();
       }
       // Re-index (hover hit-testing) only once the motion settles; cheap refreshes while moving.
       sigma.refresh(settled && !springSettled ? undefined : { skipIndexation: true });
@@ -631,6 +660,7 @@ export function Component() {
 
     /* Live layout: the graph blooms out of its folder clusters, then settles. */
     const runLayoutFor = (ms: number) => {
+      restoreHome();
       clearTimeout(layoutTimer);
       if (!layout.isRunning()) layout.start();
       layoutTimer = setTimeout(() => {
@@ -644,6 +674,7 @@ export function Component() {
     };
     replayRef.current = () => {
       layout.stop();
+      restoreHome();
       const folders = [...new Set(data.nodes.map((n) => folderGroup(n.slug)))];
       graph.updateEachNodeAttributes((slug, attrs) => ({
         ...attrs,
@@ -666,6 +697,7 @@ export function Component() {
     });
     sigma.on("moveBody", ({ event }) => {
       if (!dragged) return;
+      if (!dragMoved) restoreHome(); // start from resting positions, before moving the node
       const pos = sigma.viewportToGraph(event);
       graph.mergeNodeAttributes(dragged, { x: pos.x, y: pos.y });
       if (!dragMoved) {
