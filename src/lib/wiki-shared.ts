@@ -45,6 +45,8 @@ export interface WikiPageData {
   modifiedAt: number;
   categories: string[];
   neighbors: WikiNeighbor[];
+  /** Pages that link to this one, sorted by title. */
+  backlinks: WikiNeighbor[];
   isPerson: boolean;
   personOverride: PersonOverrideValue | null;
 }

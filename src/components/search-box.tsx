@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { ArrowUp, RefreshCw, Search } from "lucide-react";
-import { Link, useRevalidator } from "react-router-dom";
+import { Link, useLocation, useRevalidator } from "react-router-dom";
 
 import { useWikiConfig } from "@/client/wiki-config";
 import { HighlightedText, buildHighlightQuery } from "@/components/highlighted-text";
@@ -100,6 +100,14 @@ export function SearchBox({
   const inputRef = useRef<HTMLInputElement>(null);
   const deferredQuery = useDeferredValue(query);
   const highlight = useMemo(() => buildHighlightQuery(deferredQuery), [deferredQuery]);
+  const location = useLocation();
+
+  // ⌘K / Ctrl+K from any page navigates here with { focusSearch: true }.
+  useEffect(() => {
+    if ((location.state as { focusSearch?: boolean } | null)?.focusSearch) {
+      inputRef.current?.focus();
+    }
+  }, [location.key, location.state]);
 
   useEffect(() => {
     const trimmedQuery = deferredQuery.trim();

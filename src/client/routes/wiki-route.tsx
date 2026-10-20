@@ -10,11 +10,14 @@ import {
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { PanelLeft, Search } from "lucide-react";
 
 import { useWikiConfig } from "@/client/wiki-config";
 import { getTopicColor, type TopicAliasConfig } from "@/lib/wiki-config";
 import type { WikiHeading, WikiNeighbor, WikiPageData } from "@/lib/wiki-shared";
 import { usePersonImage } from "@/client/use-person-image";
+import { FileTree, FileTreeDrawer, useFileTreeState } from "@/components/file-tree";
+import { folderPathsForSlug } from "@/lib/file-tree";
 
 import { fetchJson, isSetupRequiredResponse } from "../api";
 import { RouteErrorBoundary } from "../route-error-boundary";
@@ -463,6 +466,18 @@ export function Component() {
   const portraitUrl = usePersonImage(page.isPerson ? page.title : null);
   const [personOverrideError, setPersonOverrideError] = useState<string | null>(null);
   const [isUpdatingPerson, setIsUpdatingPerson] = useState(false);
+  const { expanded, setFolder } = useFileTreeState(page.slug);
+  const [treeDrawerOpen, setTreeDrawerOpen] = useState(false);
+  const closeTreeDrawer = useCallback(() => setTreeDrawerOpen(false), []);
+  const folderPaths = folderPathsForSlug(page.slug);
+
+  // Breadcrumb folders reveal themselves in the tree (opening the drawer when there is no sidebar).
+  function revealFolder(path: string) {
+    setFolder(path, true);
+    if (!window.matchMedia("(min-width: 1280px)").matches) {
+      setTreeDrawerOpen(true);
+    }
+  }
 
   // Scroll to top whenever the article slug changes
   useEffect(() => {
@@ -515,10 +530,29 @@ export function Component() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:gap-3 sm:px-6 sm:pb-4 sm:pt-[calc(env(safe-area-inset-top)+1.25rem)]">
-        <Link to="/" className="font-display text-lg text-[var(--foreground)] sm:text-xl">
-          {config.siteTitle}
-        </Link>
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTreeDrawerOpen(true)}
+            aria-label="Browse pages"
+            className="surface rounded-full p-2 text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] xl:hidden"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </button>
+          <Link to="/" className="truncate font-display text-lg text-[var(--foreground)] sm:text-xl">
+            {config.siteTitle}
+          </Link>
+        </div>
         <div className="flex items-center gap-1.5 sm:gap-2.5">
+          <Link
+            to="/"
+            state={{ focusSearch: true }}
+            aria-label="Search"
+            className="surface flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
+          >
+            <Search aria-hidden className="h-4 w-4" />
+            <kbd className="hidden font-sans text-xs text-[var(--muted-foreground)] sm:inline">⌘K</kbd>
+          </Link>
           <Link
             to="/graph"
             className="surface rounded-full px-3.5 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
@@ -539,15 +573,27 @@ export function Component() {
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 4rem)" }}
       >
         {/* Breadcrumb */}
-        <nav className="mb-6 flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+        <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
           <Link
             to="/"
             className="transition-colors duration-150 hover:text-[var(--foreground)]"
           >
             Home
           </Link>
+          {folderPaths.map((path) => (
+            <span key={path} className="contents">
+              <span className="select-none">/</span>
+              <button
+                type="button"
+                onClick={() => revealFolder(path)}
+                className="transition-colors duration-150 hover:text-[var(--foreground)]"
+              >
+                {path.split("/").pop()}
+              </button>
+            </span>
+          ))}
           <span className="select-none">/</span>
-          <span className="text-[var(--foreground)]">{page.title}</span>
+          <span className="min-w-0 truncate text-[var(--foreground)]">{page.title}</span>
         </nav>
 
         {/* Title + metadata */}
@@ -668,6 +714,35 @@ export function Component() {
             </section>
           )}
 
+          {/* Backlinks: every page that links here, also on screens without the mini graph */}
+          {page.backlinks.length > 0 && (
+            <section id="linked-from" className="mt-10 scroll-mt-20">
+              <h2 className="font-display mb-4 border-b border-[var(--border)] pb-2 text-xl font-light text-[var(--foreground)]">
+                Linked from
+                <span className="ml-2 text-sm text-[var(--muted-foreground)]">{page.backlinks.length}</span>
+              </h2>
+              <ul className="space-y-1.5">
+                {page.backlinks.map((backlink) => (
+                  <li key={backlink.slug}>
+                    <Link
+                      to={`/wiki/${backlink.slug}`}
+                      className="text-[var(--foreground)] underline decoration-[var(--muted-foreground)]/30 underline-offset-2 transition-colors duration-150 hover:decoration-[var(--foreground)]"
+                    >
+                      {backlink.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Desktop file tree */}
+          <aside className="hidden xl:block absolute -left-64 top-0 bottom-0 w-56">
+            <div className="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto pr-1">
+              <FileTree currentSlug={page.slug} expanded={expanded} setFolder={setFolder} />
+            </div>
+          </aside>
+
           {/* Desktop sidebar — TOC + mini graph */}
           <aside className="hidden xl:block absolute -right-60 top-0 w-52">
             <div className="sticky top-8">
@@ -687,6 +762,15 @@ export function Component() {
           </aside>
         </div>
       </main>
+
+      <FileTreeDrawer open={treeDrawerOpen} onClose={closeTreeDrawer}>
+        <FileTree
+          currentSlug={page.slug}
+          expanded={expanded}
+          setFolder={setFolder}
+          onNavigate={closeTreeDrawer}
+        />
+      </FileTreeDrawer>
 
       <footer className="pb-16" />
     </div>

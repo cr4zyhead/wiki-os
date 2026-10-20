@@ -558,14 +558,21 @@ export async function getWikiPage(
     }
   }
 
+  const toNeighbor = (neighbor: PageNeighborRow) => ({
+    slug: neighbor.slug,
+    title: neighbor.title,
+    backlinkCount: neighbor.backlinkCount,
+    categories: parseJsonArray<string>(neighbor.categoryNamesJson),
+  });
+
   const neighbors = [...neighborMap.values()]
-    .map((neighbor) => ({
-      slug: neighbor.slug,
-      title: neighbor.title,
-      backlinkCount: neighbor.backlinkCount,
-      categories: parseJsonArray<string>(neighbor.categoryNamesJson),
-    }))
+    .map(toNeighbor)
     .sort((a, b) => b.backlinkCount - a.backlinkCount);
+
+  const backlinks = inbound
+    .filter((neighbor) => neighbor.slug !== row.slug)
+    .map(toNeighbor)
+    .sort((a, b) => a.title.localeCompare(b.title));
 
   const cache = deps.getCacheState();
 
@@ -579,6 +586,7 @@ export async function getWikiPage(
     modifiedAt: row.modifiedAt,
     categories: parseJsonArray<string>(row.categoryNamesJson),
     neighbors,
+    backlinks,
     isPerson: row.isPerson === 1,
     personOverride: cache.personOverrides[row.file] ?? null,
   };

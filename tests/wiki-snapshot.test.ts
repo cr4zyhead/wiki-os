@@ -91,8 +91,11 @@ describe("wiki snapshot", () => {
       expect(alpha.hasCodeBlocks).toBe(false);
       expect(alpha.headings).toEqual([{ text: "Deep Dive", id: "deep-dive", level: 2 }]);
 
+      expect(alpha.backlinks.map((page) => page.slug)).toEqual(["Beta", "Gamma"]);
+
       expect(gamma.hasCodeBlocks).toBe(true);
       expect(gamma.headings).toEqual([]);
+      expect(gamma.backlinks.map((page) => page.slug)).toEqual(["Alpha"]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
