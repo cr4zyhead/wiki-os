@@ -71,7 +71,8 @@ function createLayout(graph: Graph) {
       scalingRatio: 10,
       barnesHutOptimize: graph.order > 300,
       strongGravityMode: true,
-      slowDown: 4,
+      // High slowDown keeps the entrance visible for a couple of seconds on small vaults.
+      slowDown: 12,
       linLogMode: true,
     },
   });
@@ -88,11 +89,9 @@ function edgePhase(key: string) {
 
 function GraphSearch({
   graph,
-  sigmaRef,
   onSelect,
 }: {
   graph: Graph | null;
-  sigmaRef: React.RefObject<SigmaLib | null>;
   onSelect: (slug: string) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -115,13 +114,6 @@ function GraphSearch({
   }, [graph, query]);
 
   const handleSelect = (slug: string) => {
-    const sigma = sigmaRef.current;
-    if (sigma) {
-      const pos = sigma.getNodeDisplayData(slug);
-      if (pos) {
-        sigma.getCamera().animate({ x: pos.x, y: pos.y, ratio: 0.3 }, { duration: 400 });
-      }
-    }
     onSelect(slug);
     setQuery("");
     setResults([]);
@@ -383,12 +375,14 @@ export function Component() {
     highlightRef.current(slug ?? hoveredRef.current);
     const sigma = sigmaRef.current;
     if (slug && zoom && sigma) {
+      // Center the node, zooming in only a little so its neighbors stay in view.
       const pos = sigma.getNodeDisplayData(slug);
-      if (pos) sigma.getCamera().animate({ x: pos.x, y: pos.y, ratio: 0.5 }, { duration: 500 });
+      const camera = sigma.getCamera();
+      if (pos) camera.animate({ x: pos.x, y: pos.y, ratio: Math.min(camera.ratio, 0.85) }, { duration: 500 });
     }
   }, []);
 
-  const handleSearchSelect = useCallback((slug: string) => focusNode(slug, false), [focusNode]);
+  const handleSearchSelect = useCallback((slug: string) => focusNode(slug), [focusNode]);
   const handleInfoClose = useCallback(() => focusNode(null), [focusNode]);
   const handleInfoNeighborClick = useCallback((slug: string) => focusNode(slug), [focusNode]);
 
@@ -572,9 +566,9 @@ export function Component() {
       sigma.setCustomBBox(null);
       bboxFrozen = false;
       sigma.getCamera().animatedReset({ duration: 300 });
-      runLayoutFor(5000);
+      runLayoutFor(6000);
     };
-    runLayoutFor(5000);
+    runLayoutFor(6000);
 
     /* Drag nodes; the physics pulls their neighbors along. */
     let dragged: string | null = null;
@@ -737,7 +731,6 @@ export function Component() {
       {/* Search */}
       <GraphSearch
         graph={graphReady ? graphRef.current : null}
-        sigmaRef={sigmaRef}
         onSelect={handleSearchSelect}
       />
 
