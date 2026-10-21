@@ -5,6 +5,7 @@ import { useWikiConfig } from "@/client/wiki-config";
 import { type HomepageData, type PageSummary } from "@/lib/wiki-shared";
 import { type HomepageSectionKey } from "@/lib/wiki-config";
 import { usePersonImage } from "@/client/use-person-image";
+import { fullDate, timeAgo } from "@/lib/time-format";
 
 const categoryAccents = [
   "chip-teal",
@@ -70,6 +71,111 @@ function PageChip({ page, index }: { page: PageSummary; index: number }) {
         {page.backlinkCount}
       </span>
     </Link>
+  );
+}
+
+function folderOf(slug: string) {
+  return slug
+    .split("/")
+    .slice(0, -1)
+    .map((part) => {
+      try {
+        return decodeURIComponent(part);
+      } catch {
+        return part;
+      }
+    })
+    .join(" / ");
+}
+
+function LastUpdate({ at, subject }: { at: number; subject: string }) {
+  return (
+    <div className="animate-in flex justify-center">
+      <p className="surface inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-xs text-[var(--muted-foreground)]">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--teal)] shadow-[0_0_10px_var(--teal)]" />
+        <span className="shrink-0">Last update</span>
+        <time dateTime={new Date(at).toISOString()} className="shrink-0 font-semibold text-[var(--foreground)]">
+          {fullDate(at)}
+        </time>
+        <span className="shrink-0">· {timeAgo(at)}</span>
+        <span className="hidden min-w-0 truncate sm:inline" title={subject}>
+          · {subject}
+        </span>
+      </p>
+    </div>
+  );
+}
+
+function RecentActivity({ homepage, label }: { homepage: HomepageData; label: string }) {
+  const [tab, setTab] = useState<"updated" | "new">("updated");
+  const showNew = tab === "new" && homepage.newPages;
+  const pages = showNew ? homepage.newPages! : homepage.recentPages;
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-2">
+        <span className="h-2 w-2 rounded-full bg-[var(--peach)] shadow-[0_0_12px_var(--peach)]" />
+        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+          {label}
+        </p>
+        {homepage.newPages && (
+          <div role="tablist" className="surface ml-auto flex rounded-full p-0.5 text-[0.7rem] font-semibold">
+            {(["updated", "new"] as const).map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={tab === key}
+                onClick={() => setTab(key)}
+                className={`rounded-full px-3 py-1 transition-colors duration-200 ${
+                  tab === key
+                    ? "bg-[var(--foreground)] text-[var(--background)]"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {key === "updated" ? "Updated" : "New"}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-2.5">
+        {pages.map((page, index) => {
+          const accentRail = [
+            "before:bg-[var(--teal)]",
+            "before:bg-[var(--peach)]",
+            "before:bg-[var(--lavender)]",
+          ][index % 3];
+          const at = showNew ? page.addedAt! : page.modifiedAt;
+          const folder = folderOf(page.slug);
+          return (
+            <Link
+              key={`${tab}:${page.file}`}
+              to={`/wiki/${page.slug}`}
+              className={`animate-in hover-lift surface relative overflow-hidden rounded-2xl px-5 py-3.5 text-left before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${accentRail} stagger-${Math.min(index + 1, 8)}`}
+            >
+              <p className="line-clamp-2 pl-1 font-display text-[1.05rem] leading-snug text-[var(--foreground)]">
+                {page.title}
+              </p>
+              <p className="mt-1 line-clamp-1 pl-1 text-[0.78rem] text-[var(--muted-foreground)]">
+                {showNew ? page.summary : (page.changeSummary ?? page.summary)}
+              </p>
+              <p className="mt-2 flex items-center gap-1.5 pl-1 text-[0.65rem] font-medium text-[var(--muted-foreground)]">
+                <time dateTime={new Date(at).toISOString()} title={fullDate(at)}>
+                  {timeAgo(at)}
+                </time>
+                {folder && (
+                  <>
+                    <span>·</span>
+                    <span className="truncate">{folder}</span>
+                  </>
+                )}
+              </p>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -156,37 +262,7 @@ export function HomepageContent({
       </div>
     ) : null,
     recentPages: (
-      <div>
-        <div className="mb-4 flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[var(--peach)] shadow-[0_0_12px_var(--peach)]" />
-          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
-            {labels.recentPages}
-          </p>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {homepage.recentPages.map((page, index) => {
-            const accentRail = [
-              "before:bg-[var(--teal)]",
-              "before:bg-[var(--peach)]",
-              "before:bg-[var(--lavender)]",
-            ][index % 3];
-            return (
-              <Link
-                key={page.file}
-                to={`/wiki/${page.slug}`}
-                className={`animate-in hover-lift surface relative overflow-hidden rounded-2xl px-5 py-4 text-left before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${accentRail} stagger-${Math.min(index + 1, 8)}`}
-              >
-                <p className="truncate pl-1 font-display text-[1.05rem] text-[var(--foreground)]">
-                  {page.title}
-                </p>
-                <p className="mt-1 line-clamp-1 pl-1 text-[0.78rem] text-[var(--muted-foreground)]">
-                  {page.summary}
-                </p>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+      <RecentActivity homepage={homepage} label={labels.recentPages} />
     ),
   };
 
@@ -195,6 +271,7 @@ export function HomepageContent({
       className="w-full space-y-10 pt-4 sm:space-y-12 sm:pt-6"
       style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 4rem)" }}
     >
+      {homepage.lastUpdate && <LastUpdate {...homepage.lastUpdate} />}
       <div className="grid grid-cols-1 gap-8 sm:gap-10 lg:grid-cols-2">
         {columns.map((column, index) => (
           <section key={index} className="space-y-8 sm:space-y-10">

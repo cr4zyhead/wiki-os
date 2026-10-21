@@ -5,11 +5,12 @@ import type Database from "better-sqlite3";
 import type { WikiRuntimeDependency } from "./wiki-environment";
 import type {
   HomepageData,
+  PageSummary,
   PersonOverrideValue,
   WikiStats,
 } from "./wiki-shared";
 
-export const CACHE_VERSION = 4;
+export const CACHE_VERSION = 6;
 
 type SqliteDb = Database.Database;
 
@@ -50,6 +51,7 @@ export interface WikiHealthStatus {
 export interface DerivedData {
   stats: WikiStats;
   homepage: HomepageData;
+  pages: PageSummary[];
 }
 
 export interface WikiCacheState {

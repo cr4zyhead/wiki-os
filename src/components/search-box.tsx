@@ -8,8 +8,9 @@ import {
   type ReactNode,
 } from "react";
 import { ArrowUp, RefreshCw, Search } from "lucide-react";
-import { Link, useRevalidator } from "react-router-dom";
+import { Link, useLocation, useRevalidator } from "react-router-dom";
 
+import { SiteHeader, SiteNav } from "@/client/app-shell";
 import { useWikiConfig } from "@/client/wiki-config";
 import { HighlightedText, buildHighlightQuery } from "@/components/highlighted-text";
 import { slugFromFileName, titleFromFileName, type SearchResult, type PageSummary } from "@/lib/wiki-shared";
@@ -100,6 +101,14 @@ export function SearchBox({
   const inputRef = useRef<HTMLInputElement>(null);
   const deferredQuery = useDeferredValue(query);
   const highlight = useMemo(() => buildHighlightQuery(deferredQuery), [deferredQuery]);
+  const location = useLocation();
+
+  // ⌘K / Ctrl+K from any page navigates here with { focusSearch: true }.
+  useEffect(() => {
+    if ((location.state as { focusSearch?: boolean } | null)?.focusSearch) {
+      inputRef.current?.focus();
+    }
+  }, [location.key, location.state]);
 
   useEffect(() => {
     const trimmedQuery = deferredQuery.trim();
@@ -202,20 +211,15 @@ export function SearchBox({
 
   return (
     <div className="relative flex min-h-screen flex-col">
-      <header className="relative flex items-center justify-between gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:gap-3 sm:px-6 sm:pb-4 sm:pt-[calc(env(safe-area-inset-top)+1.25rem)]">
-        <Link
-          to="/"
-          className={`font-display text-lg text-[var(--foreground)] transition-opacity duration-200 sm:text-xl ${
-            showResults ? "opacity-100" : "opacity-0 pointer-events-none"
-          }`}
-          onClick={(event) => {
-            event.preventDefault();
-            resetSearch();
-          }}
-        >
-          {config.siteTitle}
-        </Link>
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
+      <SiteHeader
+        search={false}
+        className="relative"
+        brandClassName={`transition-opacity duration-200 ${showResults ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        onBrandClick={(event) => {
+          event.preventDefault();
+          resetSearch();
+        }}
+      >
           <button
             type="button"
             onClick={handleRefresh}
@@ -231,20 +235,8 @@ export function SearchBox({
             </span>
             <span className="hidden sm:inline">articles</span>
           </button>
-          <Link
-            to="/graph"
-            className="surface rounded-full px-3.5 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
-          >
-            {config.navigation.graphLabel}
-          </Link>
-          <Link
-            to="/stats"
-            className="surface rounded-full px-3.5 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
-          >
-            {config.navigation.statsLabel}
-          </Link>
-        </div>
-      </header>
+        <SiteNav />
+      </SiteHeader>
 
       <main
         className={`relative flex flex-1 flex-col items-center px-4 ${

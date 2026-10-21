@@ -16,6 +16,8 @@ export interface PreparedWikiMarkdown {
   contentMarkdown: string;
   hasCodeBlocks: boolean;
   headings: WikiHeading[];
+  /** Text of the leading `# H1`, if the note starts with one. */
+  title?: string;
 }
 
 export interface ParsedWikiFrontmatter {
@@ -132,27 +134,71 @@ export function stripLeadingMarkdownTitle(markdown: string) {
   return markdown.replace(/^#\s+.+\n?/, "").trimStart();
 }
 
+export function extractLeadingMarkdownTitle(markdown: string): string | undefined {
+  const match = markdown.match(/^#\s+(.+)/);
+  if (!match) return undefined;
+  const title = match[1]
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, target: string, label?: string) => label ?? target)
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`]/g, "")
+    .trim();
+  return title || undefined;
+}
+
+/** Anchor id for a heading. Keeps letters/digits of any script, so "Configuración" stays readable. */
 export function createHeadingId(text: string) {
-  return text.toLowerCase().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-");
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .trim()
+    .replace(/\s+/g, "-");
+}
+
+/**
+ * Returns a function that turns heading texts into unique ids, in document order
+ * ("intro", "intro-1", "intro-2"). The article renderer and the TOC must use the same sequence.
+ */
+export function createHeadingIdSequence() {
+  const seen = new Map<string, number>();
+  return (text: string) => {
+    const base = createHeadingId(text) || "section";
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count === 0 ? base : `${base}-${count}`;
+  };
 }
 
 export function extractMarkdownHeadings(markdown: string): WikiHeading[] {
   const headings: WikiHeading[] = [];
+  const nextId = createHeadingIdSequence();
+  let fence: string | null = null;
 
   for (const line of markdown.split("\n")) {
-    const match = line.match(/^(#{1,4})\s+(.+)$/);
+    // Lines inside ``` / ~~~ code blocks are not headings.
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const marker = fenceMatch[1];
+      if (fence === null) fence = marker;
+      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null;
+      continue;
+    }
+    if (fence !== null) {
+      continue;
+    }
+
+    const match = line.match(/^(#{1,4})\s+(.+?)\s*#*\s*$/);
     if (!match) {
       continue;
     }
 
     const text = match[2]
-      .replace(/\*\*/g, "")
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/\*\*|`/g, "")
       .trim();
 
     headings.push({
       text,
-      id: createHeadingId(text),
+      id: nextId(text),
       level: match[1].length,
     });
   }
@@ -163,8 +209,10 @@ export function extractMarkdownHeadings(markdown: string): WikiHeading[] {
 export function prepareWikiMarkdown(markdown: string): PreparedWikiMarkdown {
   const { body } = parseWikiFrontmatter(markdown);
   const contentMarkdown = stripLeadingMarkdownTitle(transformObsidianLinks(body));
+  const title = extractLeadingMarkdownTitle(body);
 
   return {
+    ...(title ? { title } : {}),
     contentMarkdown,
     hasCodeBlocks: contentMarkdown.includes("```"),
     headings: extractMarkdownHeadings(contentMarkdown),

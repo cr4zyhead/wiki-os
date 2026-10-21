@@ -12,15 +12,128 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 import { useWikiConfig } from "@/client/wiki-config";
+import { PageHistory } from "@/components/page-history";
+import { CodeBlock } from "@/components/code-block";
 import { getTopicColor, type TopicAliasConfig } from "@/lib/wiki-config";
+import { createHeadingIdSequence } from "@/lib/markdown";
 import type { WikiHeading, WikiNeighbor, WikiPageData } from "@/lib/wiki-shared";
 import { usePersonImage } from "@/client/use-person-image";
+import { SiteHeader, SiteNav, useAppShell } from "@/client/app-shell";
+import { folderPathsForSlug } from "@/lib/file-tree";
 
 import { fetchJson, isSetupRequiredResponse } from "../api";
 import { RouteErrorBoundary } from "../route-error-boundary";
 
+interface HastNode {
+  type: string;
+  tagName?: string;
+  value?: string;
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+}
+
+const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4"]);
+
+function hastText(node: HastNode): string {
+  return node.type === "text" ? (node.value ?? "") : (node.children ?? []).map(hastText).join("");
+}
+
+/**
+ * Gives rendered headings the same ids the TOC links to (see extractMarkdownHeadings).
+ * Headings in blockquotes are skipped on both sides.
+ */
+function rehypeHeadingIds() {
+  return (tree: HastNode) => {
+    const nextId = createHeadingIdSequence();
+    const walk = (node: HastNode) => {
+      for (const child of node.children ?? []) {
+        if (child.type === "element" && child.tagName && HEADING_TAGS.has(child.tagName)) {
+          child.properties = { ...child.properties, id: nextId(hastText(child)) };
+        } else if (child.tagName !== "blockquote" && child.tagName !== "pre") {
+          walk(child);
+        }
+      }
+    };
+    walk(tree);
+  };
+}
+
+const HEADING_SCROLL_OFFSET = 80; // matches the headings' scroll-mt-20
+let cancelScrollAnimation: (() => void) | null = null;
+
+/**
+ * Eased scroll to an element. Animated in JS rather than with `behavior: "smooth"`,
+ * which some OS settings turn into an instant jump. Stops if the reader scrolls.
+ */
+function animateScrollTo(element: HTMLElement, duration = 600) {
+  cancelScrollAnimation?.();
+  const startY = window.scrollY;
+  const maxY = document.documentElement.scrollHeight - window.innerHeight;
+  const targetY = Math.min(maxY, Math.max(0, element.getBoundingClientRect().top + startY - HEADING_SCROLL_OFFSET));
+  const distance = targetY - startY;
+  const start = performance.now();
+  let frame = 0;
+
+  const stop = () => {
+    cancelAnimationFrame(frame);
+    window.removeEventListener("wheel", stop);
+    window.removeEventListener("touchstart", stop);
+    cancelScrollAnimation = null;
+  };
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2; // easeInOutCubic
+    window.scrollTo(0, startY + distance * eased);
+    if (t < 1) frame = requestAnimationFrame(step);
+    else stop();
+  };
+
+  window.addEventListener("wheel", stop, { passive: true });
+  window.addEventListener("touchstart", stop, { passive: true });
+  cancelScrollAnimation = stop;
+  frame = requestAnimationFrame(step);
+
+  // Briefly highlight the destination so the eye finds it.
+  element.classList.remove("heading-flash");
+  void element.offsetWidth;
+  element.classList.add("heading-flash");
+}
+
+function scrollToHeading(id: string) {
+  const element = document.getElementById(id);
+  if (!element) return;
+  animateScrollTo(element);
+  // Keep the section in the URL so it can be shared or reloaded.
+  history.replaceState(history.state, "", `#${encodeURIComponent(id)}`);
+}
+
+function hastElements(node: HastNode, tagName: string): HastNode[] {
+  const found: HastNode[] = [];
+  for (const child of node.children ?? []) {
+    if (child.type !== "element") continue;
+    if (child.tagName === tagName) found.push(child);
+    else found.push(...hastElements(child, tagName));
+  }
+  return found;
+}
+
+/** Tags each table cell with its column header (data-label), used by the stacked mobile layout. */
+function rehypeTableLabels() {
+  return (tree: HastNode) => {
+    for (const table of hastElements(tree, "table")) {
+      const headers = hastElements(table, "th").map((th) => hastText(th).trim());
+      for (const row of hastElements(table, "tr")) {
+        hastElements(row, "td").forEach((cell, index) => {
+          if (headers[index]) cell.properties = { ...cell.properties, dataLabel: headers[index] };
+        });
+      }
+    }
+  };
+}
+
 const remarkPlugins = [remarkGfm];
-const rehypePlugins = [rehypeHighlight];
+const rehypePlugins = [rehypeHeadingIds, rehypeTableLabels, rehypeHighlight];
+const rehypePluginsWithoutCode = [rehypeHeadingIds, rehypeTableLabels];
 const markdownComponents = {
   h1: ({ ...props }) => <h1 className="mb-4 text-3xl scroll-mt-20" {...props} />,
   h2: ({ ...props }) => <h2 className="font-display mb-3 mt-10 text-xl font-light scroll-mt-20" {...props} />,
@@ -31,6 +144,13 @@ const markdownComponents = {
   ol: ({ ...props }) => <ol className="mb-4 list-decimal pl-6 leading-[1.8]" {...props} />,
   li: ({ ...props }) => <li className="mb-1.5" {...props} />,
   blockquote: ({ ...props }) => <blockquote className="my-4" {...props} />,
+  // Wide tables scroll inside their own box instead of being clipped by the page.
+  table: ({ ...props }) => (
+    <div className="table-wrap">
+      <table {...props} />
+    </div>
+  ),
+  pre: CodeBlock,
 };
 
 function normalizeSplatParam(rawSplat: string | undefined) {
@@ -86,7 +206,7 @@ function TableOfContents({
           href={`#${h.id}`}
           onClick={(e) => {
             e.preventDefault();
-            document.getElementById(h.id)?.scrollIntoView({ behavior: "smooth" });
+            scrollToHeading(h.id);
           }}
           className={`toc-item block text-[13px] leading-snug transition-colors duration-150 ${
             h.level === 3 ? "pl-3" : h.level >= 4 ? "pl-6" : ""
@@ -457,16 +577,22 @@ export function Component() {
   const config = useWikiConfig();
   const navigate = useNavigate();
   const { revalidate, state: revalidationState } = useRevalidator();
-  const pageRehypePlugins = page.hasCodeBlocks ? rehypePlugins : [];
+  const pageRehypePlugins = page.hasCodeBlocks ? rehypePlugins : rehypePluginsWithoutCode;
   const filteredHeadings = page.headings.filter((h) => h.text !== "Source Notes");
   const activeId = useActiveHeading(filteredHeadings);
   const portraitUrl = usePersonImage(page.isPerson ? page.title : null);
   const [personOverrideError, setPersonOverrideError] = useState<string | null>(null);
   const [isUpdatingPerson, setIsUpdatingPerson] = useState(false);
+  // Breadcrumb folders reveal themselves in the page tree.
+  const { revealFolder } = useAppShell();
+  const folderPaths = folderPathsForSlug(page.slug);
 
-  // Scroll to top whenever the article slug changes
+  // On a new article, jump to the #section in the URL if there is one, else to the top.
   useEffect(() => {
+    const hash = decodeURIComponent(window.location.hash.slice(1));
+    const target = hash ? document.getElementById(hash) : null;
     window.scrollTo(0, 0);
+    if (target) animateScrollTo(target);
   }, [page.slug]);
   const readTime = estimateReadingTime(page.contentMarkdown);
   const words = wordCount(page.contentMarkdown);
@@ -514,40 +640,36 @@ export function Component() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between gap-2 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:gap-3 sm:px-6 sm:pb-4 sm:pt-[calc(env(safe-area-inset-top)+1.25rem)]">
-        <Link to="/" className="font-display text-lg text-[var(--foreground)] sm:text-xl">
-          {config.siteTitle}
-        </Link>
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
-          <Link
-            to="/graph"
-            className="surface rounded-full px-3.5 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
-          >
-            {config.navigation.graphLabel}
-          </Link>
-          <Link
-            to="/stats"
-            className="surface rounded-full px-3.5 py-2 text-sm font-medium text-[var(--foreground)] transition-[transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] sm:px-4"
-          >
-            {config.navigation.statsLabel}
-          </Link>
-        </div>
-      </header>
+      <SiteHeader>
+        <SiteNav />
+      </SiteHeader>
 
       <main
-        className="animate-in mx-auto w-full max-w-3xl px-4 pt-4 sm:px-6 sm:pt-8 lg:px-8"
+        className="wiki-main animate-in mx-auto w-full px-4 pt-4 sm:px-6 sm:pt-8 lg:px-8"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 4rem)" }}
       >
         {/* Breadcrumb */}
-        <nav className="mb-6 flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+        <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
           <Link
             to="/"
             className="transition-colors duration-150 hover:text-[var(--foreground)]"
           >
             Home
           </Link>
+          {folderPaths.map((path) => (
+            <span key={path} className="contents">
+              <span className="select-none">/</span>
+              <button
+                type="button"
+                onClick={() => revealFolder(path)}
+                className="transition-colors duration-150 hover:text-[var(--foreground)]"
+              >
+                {path.split("/").pop()}
+              </button>
+            </span>
+          ))}
           <span className="select-none">/</span>
-          <span className="text-[var(--foreground)]">{page.title}</span>
+          <span className="min-w-0 truncate text-[var(--foreground)]">{page.title}</span>
         </nav>
 
         {/* Title + metadata */}
@@ -607,12 +729,13 @@ export function Component() {
                 </>
               )}
             </div>
+            <PageHistory file={page.fileName} />
           </div>
         </div>
 
         {/* Mobile TOC */}
         {filteredHeadings.length > 0 && (
-          <div className="mb-6 lg:hidden rounded-lg border border-[var(--border)] bg-white px-4 py-3">
+          <div className="toc-inline mb-6 rounded-lg border border-[var(--border)] bg-white px-4 py-3">
             <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
               On this page
             </p>
@@ -623,7 +746,7 @@ export function Component() {
                   href={`#${h.id}`}
                   onClick={(e) => {
                     e.preventDefault();
-                    document.getElementById(h.id)?.scrollIntoView({ behavior: "smooth" });
+                    scrollToHeading(h.id);
                   }}
                   className="text-sm text-[var(--muted-foreground)] transition-colors duration-150 hover:text-[var(--foreground)]"
                 >
@@ -668,8 +791,30 @@ export function Component() {
             </section>
           )}
 
+          {/* Backlinks: every page that links here, also on screens without the mini graph */}
+          {page.backlinks.length > 0 && (
+            <section id="linked-from" className="mt-10 scroll-mt-20">
+              <h2 className="font-display mb-4 border-b border-[var(--border)] pb-2 text-xl font-light text-[var(--foreground)]">
+                Linked from
+                <span className="ml-2 text-sm text-[var(--muted-foreground)]">{page.backlinks.length}</span>
+              </h2>
+              <ul className="space-y-1.5">
+                {page.backlinks.map((backlink) => (
+                  <li key={backlink.slug}>
+                    <Link
+                      to={`/wiki/${backlink.slug}`}
+                      className="text-[var(--foreground)] underline decoration-[var(--muted-foreground)]/30 underline-offset-2 transition-colors duration-150 hover:decoration-[var(--foreground)]"
+                    >
+                      {backlink.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {/* Desktop sidebar — TOC + mini graph */}
-          <aside className="hidden xl:block absolute -right-60 top-0 w-52">
+          <aside className="toc-aside absolute -right-60 top-0 bottom-0 w-52">
             <div className="sticky top-8">
               {filteredHeadings.length > 0 && (
                 <TableOfContents headings={filteredHeadings} activeId={activeId} />

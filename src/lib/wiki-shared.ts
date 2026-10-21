@@ -20,6 +20,15 @@ export interface WikiStats {
   total_pages: number;
   total_words: number;
   top_backlinks: BacklinkStat[];
+  health?: WikiHealthReport;
+}
+
+/** Broken links, pages nobody links to, and the pages that went longest without an update. */
+export interface WikiHealthReport {
+  brokenLinks: Array<{ slug: string; title: string; target: string }>;
+  orphans: Array<{ slug: string; title: string }>;
+  leastUpdated: Array<{ slug: string; title: string; updatedAt: number; stale: boolean }>;
+  staleDays: number;
 }
 
 export interface WikiHeading {
@@ -45,6 +54,8 @@ export interface WikiPageData {
   modifiedAt: number;
   categories: string[];
   neighbors: WikiNeighbor[];
+  /** Pages that link to this one, sorted by title. */
+  backlinks: WikiNeighbor[];
   isPerson: boolean;
   personOverride: PersonOverrideValue | null;
 }
@@ -57,6 +68,10 @@ export interface PageSummary {
   backlinkCount: number;
   wordCount: number;
   modifiedAt: number;
+  /** First commit of the page, when the vault is a git repo. */
+  addedAt?: number;
+  /** Subject of the commit that last changed the page, when the vault is a git repo. */
+  changeSummary?: string;
 }
 
 export interface CategoryInfo {
@@ -71,6 +86,9 @@ export interface HomepageData {
   totalWords: number;
   featured: PageSummary[];
   recentPages: PageSummary[];
+  /** Only when the vault is a git repo: pages by first commit, and the repo's last commit. */
+  newPages?: PageSummary[];
+  lastUpdate?: { at: number; subject: string } | null;
   categories: CategoryInfo[];
   topConnected: PageSummary[];
   people: PageSummary[];

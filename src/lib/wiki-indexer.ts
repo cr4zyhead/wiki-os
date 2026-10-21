@@ -42,6 +42,8 @@ export interface PreparedWikiMarkdown {
   contentMarkdown: string;
   hasCodeBlocks: boolean;
   headings: WikiHeading[];
+  /** Text of the leading `# H1`, if the note starts with one. */
+  title?: string;
 }
 
 export interface WikiIndexerRuntimeDependencies {
@@ -84,6 +86,8 @@ export interface WikiIndexerPageDependencies<TConfig = unknown>
 export interface WikiIndexerDbDependencies<TDb> extends WikiIndexerRuntimeDependencies {
   requireDb: () => TDb;
   upsertPageRecord: (db: TDb, page: IndexedWikiPage) => void;
+  /** Re-resolves link targets across the vault after pages change; true when anything changed. */
+  resolveLinks?: (db: TDb) => boolean;
   deletePageByFile: (db: TDb, file: string) => boolean;
   selectPageModifiedAt: (db: TDb, file: string) => number | undefined;
   listIndexedPages: (db: TDb) => Array<{ file: string; modifiedAt: number }>;
@@ -190,10 +194,11 @@ export async function loadIndexedWikiPage<TConfig>(
     ]);
 
     const config = await deps.getWikiEnvironmentConfig();
-    const title = deps.titleFromFileName(file);
-    const titleLower = title.toLowerCase();
     const { data: frontmatter, body } = deps.parseWikiFrontmatter(markdown);
     const prepared = deps.prepareWikiMarkdown(body);
+    // Prefer the note's own `# H1` (which the article view strips) over the file name.
+    const title = prepared.title ?? deps.titleFromFileName(file);
+    const titleLower = title.toLowerCase();
     const categoryNames = deps.deriveCategoryNames(
       file,
       title,
@@ -289,10 +294,15 @@ export async function syncSinglePath<TDb, TConfig>(
   }
 
   const absolutePath = path.join(wikiRoot, normalizedPath);
+  const remove = () => {
+    const removed = deps.deletePageByFile(db, normalizedPath);
+    if (removed) deps.resolveLinks?.(db);
+    return removed;
+  };
   try {
     const stat = await fs.stat(absolutePath);
     if (!stat.isFile()) {
-      return deps.deletePageByFile(db, normalizedPath);
+      return remove();
     }
 
     const existingModifiedAt = deps.selectPageModifiedAt(db, normalizedPath);
@@ -302,14 +312,15 @@ export async function syncSinglePath<TDb, TConfig>(
 
     const page = await loadIndexedWikiPage(normalizedPath, deps, stat.mtimeMs);
     if (!page) {
-      return deps.deletePageByFile(db, normalizedPath);
+      return remove();
     }
 
     deps.upsertPageRecord(db, page);
+    deps.resolveLinks?.(db);
     return true;
   } catch (error) {
     if (isMissingPathError(error)) {
-      return deps.deletePageByFile(db, normalizedPath);
+      return remove();
     }
 
     throw error;
@@ -366,7 +377,10 @@ export async function reconcileIndexWithDisk<TDb, TConfig>(
       }
     }
 
-    if (upserted > 0 || deleted > 0) {
+    // Always: an index built before link resolution existed gets fixed on the next startup.
+    const relinked = deps.resolveLinks?.(db) ?? false;
+
+    if (upserted > 0 || deleted > 0 || relinked) {
       deps.markRevisionChanged?.();
     }
 

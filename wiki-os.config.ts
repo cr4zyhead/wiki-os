@@ -9,7 +9,7 @@ const config: WikiOsConfigInput = {
       featured: "Discover",
       topConnected: "Most Connected",
       people: "People",
-      recentPages: "Recently Added",
+      recentPages: "Recent Activity",
     },
   },
   people: {

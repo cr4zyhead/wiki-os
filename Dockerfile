@@ -27,7 +27,11 @@ ENV NODE_ENV=production \
 
 LABEL org.opencontainers.image.title="WikiOS"
 
-RUN mkdir -p /app /data \
+# git: read the vault's history for "last update" and recent activity on the homepage
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /app /data \
   && chown -R node:node /app /data
 
 COPY --from=build /app/package*.json ./

@@ -17,6 +17,14 @@ if (!(container instanceof HTMLElement)) {
 
 const rootContainer: HTMLElement = container;
 
+// ⌘K / Ctrl+K opens search from anywhere.
+window.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    void router.navigate("/", { state: { focusSearch: true } });
+  }
+});
+
 async function bootstrap() {
   const config = await fetchJson<WikiOsConfig>("/api/config").catch(() => DEFAULT_WIKI_OS_CONFIG);
 

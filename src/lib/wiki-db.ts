@@ -1,8 +1,9 @@
 import Database from "better-sqlite3";
 
+import { createLinkResolver } from "./wiki-health";
 import type { WikiHeading } from "./wiki-shared";
 
-export const DEFAULT_WIKI_INDEX_CACHE_VERSION = 4;
+export const DEFAULT_WIKI_INDEX_CACHE_VERSION = 6;
 export const REQUIRED_INDEX_TABLES = ["pages", "backlinks", "categories", "pages_fts"] as const;
 
 export type SqliteDb = Database.Database;
@@ -272,6 +273,55 @@ export function recomputeBacklinkCountsForSlugs(db: SqliteDb, slugs: Iterable<st
   });
 
   run(uniqueSlugs);
+}
+
+/**
+ * Re-points every backlink to the page Obsidian would open ([[note]] → Folder/note.md, any casing)
+ * and refreshes backlink counts. Returns true when something changed.
+ */
+// ponytail: rewrites the whole backlinks table on every sync (O(links)); fine for personal vaults,
+// resolve only the touched sources plus links to added/removed names if huge vaults get slow.
+export function resolveBacklinkTargets(db: SqliteDb) {
+  const pages = db.prepare("SELECT file, slug FROM pages").all() as Array<{ file: string; slug: string }>;
+  const slugByFile = new Map(pages.map((page) => [page.file, page.slug]));
+  const resolve = createLinkResolver(pages.map((page) => page.file));
+  const rows = db
+    .prepare(
+      "SELECT source_file AS source, target_raw AS raw, target_slug AS slug, occurrence_count AS count FROM backlinks",
+    )
+    .all() as Array<{ source: string; raw: string; slug: string; count: number }>;
+
+  const merged = new Map<string, { source: string; raw: string; slug: string; count: number }>();
+  let changed = false;
+  for (const row of rows) {
+    const target = row.raw.split("#")[0].trim();
+    const file = target ? resolve(target) : null;
+    const slug = (file && slugByFile.get(file)) || row.slug;
+    changed ||= slug !== row.slug;
+    const key = `${row.source}\0${slug}`;
+    const existing = merged.get(key);
+    if (existing) existing.count += row.count;
+    else merged.set(key, { ...row, slug });
+  }
+
+  const counts = db.prepare("SELECT slug, backlink_count AS count FROM pages").all() as Array<{ slug: string; count: number }>;
+  const inbound = new Map<string, number>();
+  for (const row of merged.values()) inbound.set(row.slug, (inbound.get(row.slug) ?? 0) + row.count);
+  const staleCounts = counts.filter((page) => (inbound.get(page.slug) ?? 0) !== page.count);
+  if (!changed && staleCounts.length === 0) return false;
+
+  db.transaction(() => {
+    if (changed) {
+      db.prepare("DELETE FROM backlinks").run();
+      const insert = db.prepare(
+        "INSERT INTO backlinks (source_file, target_raw, target_slug, occurrence_count) VALUES (?, ?, ?, ?)",
+      );
+      for (const row of merged.values()) insert.run(row.source, row.raw, row.slug, row.count);
+    }
+    const update = db.prepare("UPDATE pages SET backlink_count = ? WHERE slug = ?");
+    for (const page of staleCounts) update.run(inbound.get(page.slug) ?? 0, page.slug);
+  })();
+  return true;
 }
 
 export function upsertPageRecord(db: SqliteDb, page: IndexedWikiPageRecord) {

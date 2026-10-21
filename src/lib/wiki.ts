@@ -1,3 +1,6 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
 import {
   getTopicEmoji,
   getTopicLabel,
@@ -20,6 +23,7 @@ import {
   runDbMigrations,
   runStartupIntegrityCheck,
   seedCategoryRules,
+  resolveBacklinkTargets,
   upsertPageRecord,
   type SqliteDb,
 } from "./wiki-db";
@@ -48,6 +52,8 @@ import {
   wikiCache,
 } from "./wiki-state";
 import { createWikiWatcherController } from "./wiki-watcher";
+import { readGitActivity, withGitActivity } from "./git-activity";
+import { buildHealthReport, extractLinkTargets, isAttachmentTarget } from "./wiki-health";
 export type {
   SearchMatch,
   SearchResult,
@@ -233,6 +239,7 @@ const indexer = createWikiIndexer<SqliteDb, WikiOsConfig>({
   extractSummary,
   requireDb,
   upsertPageRecord,
+  resolveLinks: resolveBacklinkTargets,
   deletePageByFile,
   selectPageModifiedAt: (db, file) =>
     (db.prepare("SELECT modified_at AS modifiedAt FROM pages WHERE file = ?").get(file) as
@@ -387,11 +394,40 @@ export async function searchWiki(query: string) {
 }
 
 export async function getWikiStats() {
-  return queries.getWikiStats();
+  const [stats, pages, root] = await Promise.all([
+    queries.getWikiStats(),
+    queries.getHealthPages(),
+    getWikiRootPath(),
+  ]);
+  if (!root) return stats;
+
+  const attachments = [
+    ...new Set(pages.flatMap((page) => extractLinkTargets(page.markdown)).filter(isAttachmentTarget)),
+  ];
+  const existing = new Set(
+    (
+      await Promise.all(
+        attachments.map((target) =>
+          fs.access(path.join(root, target)).then(
+            () => target,
+            () => null,
+          ),
+        ),
+      )
+    ).filter((target): target is string => target !== null),
+  );
+  const activity = await readGitActivity(root);
+  const health = buildHealthReport(pages, {
+    attachmentExists: (target) => existing.has(target),
+    updatedAt: (page) => activity?.files.get(page.file)?.updatedAt ?? page.modifiedAt,
+  });
+  return { ...stats, health };
 }
 
 export async function getHomepageData() {
-  return queries.getHomepageData();
+  const [derived, root] = await Promise.all([queries.getDerivedData(), getWikiRootPath()]);
+  const activity = root ? await readGitActivity(root) : null;
+  return activity ? withGitActivity(derived.homepage, derived.pages, activity) : derived.homepage;
 }
 
 export async function getGraphData() {

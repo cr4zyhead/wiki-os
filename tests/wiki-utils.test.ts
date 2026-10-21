@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { prepareWikiMarkdown, transformObsidianLinks } from "../src/lib/markdown";
+import {
+  createHeadingIdSequence,
+  extractMarkdownHeadings,
+  prepareWikiMarkdown,
+  transformObsidianLinks,
+} from "../src/lib/markdown";
 import { decodeSlugParts, slugFromFileName, titleFromFileName } from "../src/lib/wiki";
 
 describe("wiki helpers", () => {
@@ -22,6 +27,42 @@ describe("wiki helpers", () => {
     );
   });
 
+  it("uses the leading H1 as the page title", () => {
+    expect(prepareWikiMarkdown("# Trip *notes*: [[Travel/packing|packing list]]\n\nBody").title).toBe(
+      "Trip notes: packing list",
+    );
+    expect(prepareWikiMarkdown("Intro\n\n# Not a title").title).toBeUndefined();
+    expect(prepareWikiMarkdown("## Only h2").title).toBeUndefined();
+  });
+
+  it("extracts unique, readable heading ids and skips code blocks", () => {
+    const headings = extractMarkdownHeadings(
+      [
+        "## Estado actual",
+        "```markdown",
+        "## Estado actual",
+        "## Log",
+        "```",
+        "## Configuración `aplicada` (2026-10-18)",
+        "~~~",
+        "# Not a heading",
+        "~~~",
+        "### Estado actual ##",
+      ].join("\n"),
+    );
+
+    expect(headings).toEqual([
+      { text: "Estado actual", id: "estado-actual", level: 2 },
+      { text: "Configuración aplicada (2026-10-18)", id: "configuración-aplicada-2026-10-18", level: 2 },
+      { text: "Estado actual", id: "estado-actual-1", level: 3 },
+    ]);
+  });
+
+  it("numbers repeated heading ids in document order", () => {
+    const nextId = createHeadingIdSequence();
+    expect(["Intro", "Intro", "intro!", "★"].map(nextId)).toEqual(["intro", "intro-1", "intro-2", "section"]);
+  });
+
   it("decodes nested slug parts safely", () => {
     expect(decodeSlugParts(["slides", "The%20Algorithm%20-%20Slides"])).toEqual([
       "slides",
@@ -39,6 +80,7 @@ describe("wiki helpers", () => {
           "# Title\n\nSee [[LLMs]].\n\n## Deep Dive\n\n```ts\nconst x = 1;\n```",
       ),
     ).toEqual({
+      title: "Title",
       contentMarkdown:
         "See [LLMs](/wiki/LLMs).\n\n## Deep Dive\n\n```ts\nconst x = 1;\n```",
       hasCodeBlocks: true,
