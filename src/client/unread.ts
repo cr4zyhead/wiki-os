@@ -36,7 +36,8 @@ function writeJson(key: string, value: unknown) {
 
 /** Start of the current visit's window. First visit ever: now, so nothing shows as unread. */
 export function nextVisit(previous: Visit | null, now: number): Visit {
-  if (!previous) return { since: now, lastSeen: now };
+  const valid = Number.isFinite(previous?.since) && Number.isFinite(previous?.lastSeen);
+  if (!previous || !valid) return { since: now, lastSeen: now };
   const since = now - previous.lastSeen > VISIT_GAP_MS ? previous.lastSeen : previous.since;
   return { since, lastSeen: now };
 }
@@ -78,6 +79,7 @@ function subscribe(listener: () => void) {
 }
 
 export function markSeen(slug: string) {
+  start(); // the article can mount before anything that reads the store
   const now = Date.now();
   const seen = { ...state.seen, [slug]: now };
   writeJson(SEEN_KEY, seen);
@@ -86,6 +88,7 @@ export function markSeen(slug: string) {
 }
 
 export function markAllSeen() {
+  start();
   const now = Date.now();
   writeJson(SEEN_KEY, {});
   writeJson(VISIT_KEY, { since: now, lastSeen: now });

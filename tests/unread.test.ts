@@ -8,6 +8,11 @@ describe("unread markers", () => {
     const visit = { since: 100, lastSeen: 500 };
     expect(nextVisit(visit, 500 + VISIT_GAP_MS - 1)).toEqual({ since: 100, lastSeen: 500 + VISIT_GAP_MS - 1 });
     expect(nextVisit(visit, 500 + VISIT_GAP_MS + 1)).toEqual({ since: 500, lastSeen: 500 + VISIT_GAP_MS + 1 });
+    // Corrupt or partial storage (e.g. since serialized as null) counts as a first visit, not "everything is new".
+    expect(nextVisit({ since: null, lastSeen: 400 } as unknown as { since: number; lastSeen: number }, 1000)).toEqual({
+      since: 1000,
+      lastSeen: 1000,
+    });
   });
 
   it("is unread when updated after the visit window and after it was last opened", () => {
