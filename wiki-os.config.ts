@@ -12,6 +12,14 @@ const config: WikiOsConfigInput = {
       recentPages: "Recent Activity",
     },
   },
+  categories: {
+    // This vault's project tag and project folder are the same group: show one category.
+    aliases: {
+      proyecto: { label: "Proyectos" },
+    },
+    // index.md has no folder or tag, so it gets a guessed topic from its most frequent word.
+    hidden: ["actualizado"],
+  },
   people: {
     mode: "explicit",
   },
