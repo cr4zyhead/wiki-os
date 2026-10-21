@@ -23,7 +23,9 @@ export async function copyText(text: string) {
 }
 
 /** Markdown `pre` with a copy button (shown on hover, always on touch screens). */
-export function CodeBlock({ node: _node, ...props }: ComponentProps<"pre"> & { node?: unknown }) {
+export function CodeBlock(markdownProps: ComponentProps<"pre"> & { node?: unknown }) {
+  const props = { ...markdownProps };
+  delete props.node; // react-markdown's AST node, not a DOM attribute
   const ref = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
 
