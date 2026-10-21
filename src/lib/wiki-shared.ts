@@ -57,6 +57,10 @@ export interface PageSummary {
   backlinkCount: number;
   wordCount: number;
   modifiedAt: number;
+  /** First commit of the page, when the vault is a git repo. */
+  addedAt?: number;
+  /** Subject of the commit that last changed the page, when the vault is a git repo. */
+  changeSummary?: string;
 }
 
 export interface CategoryInfo {
@@ -71,6 +75,9 @@ export interface HomepageData {
   totalWords: number;
   featured: PageSummary[];
   recentPages: PageSummary[];
+  /** Only when the vault is a git repo: pages by first commit, and the repo's last commit. */
+  newPages?: PageSummary[];
+  lastUpdate?: { at: number; subject: string } | null;
   categories: CategoryInfo[];
   topConnected: PageSummary[];
   people: PageSummary[];

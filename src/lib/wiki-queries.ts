@@ -64,6 +64,7 @@ export interface WikiIndexStatus {
 export interface DerivedData {
   stats: WikiStats;
   homepage: HomepageData;
+  pages: PageSummary[];
 }
 
 export interface WikiQueryCacheState {
@@ -328,6 +329,7 @@ export async function getDerivedData(deps: WikiQueryDependencies): Promise<Deriv
     .sort((a, b) => b.backlinkCount - a.backlinkCount || a.title.localeCompare(b.title));
 
   const derivedData: DerivedData = {
+    pages: pageSummaries,
     stats: {
       total_pages: totals.totalPages,
       total_words: totals.totalWords,

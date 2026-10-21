@@ -119,7 +119,7 @@ export const DEFAULT_WIKI_OS_CONFIG: WikiOsConfig = {
       featured: "Discover",
       topConnected: "Most Connected",
       people: "People",
-      recentPages: "Recently Added",
+      recentPages: "Recent Activity",
       spotlightBadge: "Spotlight",
       statsEyebrow: "Wiki Snapshot",
       statsDescription: "A live view of the Obsidian wiki index and backlink graph.",

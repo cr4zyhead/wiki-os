@@ -48,6 +48,7 @@ import {
   wikiCache,
 } from "./wiki-state";
 import { createWikiWatcherController } from "./wiki-watcher";
+import { readGitActivity, withGitActivity } from "./git-activity";
 export type {
   SearchMatch,
   SearchResult,
@@ -391,7 +392,9 @@ export async function getWikiStats() {
 }
 
 export async function getHomepageData() {
-  return queries.getHomepageData();
+  const [derived, root] = await Promise.all([queries.getDerivedData(), getWikiRootPath()]);
+  const activity = root ? await readGitActivity(root) : null;
+  return activity ? withGitActivity(derived.homepage, derived.pages, activity) : derived.homepage;
 }
 
 export async function getGraphData() {
