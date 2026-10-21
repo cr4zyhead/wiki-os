@@ -52,7 +52,7 @@ import {
   wikiCache,
 } from "./wiki-state";
 import { createWikiWatcherController } from "./wiki-watcher";
-import { readGitActivity, withGitActivity } from "./git-activity";
+import { HUB_FILES, readGitActivity, withGitActivity } from "./git-activity";
 import { buildHealthReport, extractLinkTargets, isAttachmentTarget } from "./wiki-health";
 export type {
   SearchMatch,
@@ -391,6 +391,17 @@ export async function reindexWikiSnapshot() {
 
 export async function searchWiki(query: string) {
   return queries.searchWiki(query);
+}
+
+/** Last update of each page by slug (git commit, else file mtime), without the hub pages. */
+export async function getPageUpdates(): Promise<Record<string, number>> {
+  const [pages, root] = await Promise.all([queries.getHealthPages(), getWikiRootPath()]);
+  const activity = root ? await readGitActivity(root) : null;
+  return Object.fromEntries(
+    pages
+      .filter((page) => !HUB_FILES.has(page.file))
+      .map((page) => [page.slug, activity?.files.get(page.file)?.updatedAt ?? page.modifiedAt]),
+  );
 }
 
 export async function getWikiStats() {

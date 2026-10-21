@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
+import { markSeen } from "@/client/unread";
 import { useWikiConfig } from "@/client/wiki-config";
 import { PageHistory } from "@/components/page-history";
 import { CodeBlock } from "@/components/code-block";
@@ -574,6 +575,7 @@ export async function loader({ params }: LoaderFunctionArgs) {
 
 export function Component() {
   const page = useLoaderData() as WikiPageData;
+  useEffect(() => markSeen(page.slug), [page.slug]);
   const config = useWikiConfig();
   const navigate = useNavigate();
   const { revalidate, state: revalidationState } = useRevalidator();

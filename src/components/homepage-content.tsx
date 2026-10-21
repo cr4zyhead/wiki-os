@@ -5,6 +5,7 @@ import { useWikiConfig } from "@/client/wiki-config";
 import { type HomepageData, type PageSummary } from "@/lib/wiki-shared";
 import { type HomepageSectionKey } from "@/lib/wiki-config";
 import { usePersonImage } from "@/client/use-person-image";
+import { markAllSeen, useUnread } from "@/client/unread";
 import { fullDate, timeAgo } from "@/lib/time-format";
 
 const categoryAccents = [
@@ -89,8 +90,9 @@ function folderOf(slug: string) {
 }
 
 function LastUpdate({ at, subject }: { at: number; subject: string }) {
+  const { unreadCount } = useUnread();
   return (
-    <div className="animate-in flex justify-center">
+    <div className="animate-in flex flex-col items-center gap-2">
       <p className="surface inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-xs text-[var(--muted-foreground)]">
         <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--teal)] shadow-[0_0_10px_var(--teal)]" />
         <span className="shrink-0">Last update</span>
@@ -102,12 +104,29 @@ function LastUpdate({ at, subject }: { at: number; subject: string }) {
           · {subject}
         </span>
       </p>
+      {unreadCount > 0 && (
+        <p className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--teal)] shadow-[0_0_8px_var(--teal)]" />
+          <span>
+            <span className="font-semibold text-[var(--foreground)]">{unreadCount}</span>{" "}
+            {unreadCount === 1 ? "page" : "pages"} changed since your last visit
+          </span>
+          <button
+            type="button"
+            onClick={markAllSeen}
+            className="underline decoration-[var(--muted-foreground)]/30 underline-offset-2 hover:text-[var(--foreground)]"
+          >
+            Mark all read
+          </button>
+        </p>
+      )}
     </div>
   );
 }
 
 function RecentActivity({ homepage, label }: { homepage: HomepageData; label: string }) {
   const [tab, setTab] = useState<"updated" | "new">("updated");
+  const { isUnread } = useUnread();
   const showNew = tab === "new" && homepage.newPages;
   const pages = showNew ? homepage.newPages! : homepage.recentPages;
 
@@ -155,6 +174,11 @@ function RecentActivity({ homepage, label }: { homepage: HomepageData; label: st
               className={`animate-in hover-lift surface relative overflow-hidden rounded-2xl px-5 py-3.5 text-left before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${accentRail} stagger-${Math.min(index + 1, 8)}`}
             >
               <p className="line-clamp-2 pl-1 font-display text-[1.05rem] leading-snug text-[var(--foreground)]">
+                {isUnread(page.slug) && (
+                  <span className="mr-2 inline-block -translate-y-0.5 rounded-full bg-[var(--teal-soft)] px-1.5 py-0.5 align-middle font-sans text-[0.6rem] font-semibold uppercase tracking-wider text-[#3e6978]">
+                    New for you
+                  </span>
+                )}
                 {page.title}
               </p>
               <p className="mt-1 line-clamp-1 pl-1 text-[0.78rem] text-[var(--muted-foreground)]">

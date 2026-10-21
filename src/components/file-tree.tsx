@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronRight, FileText, Folder, FolderOpen, X } from "lucide-react";
 
 import { fetchJson } from "@/client/api";
+import { useUnread } from "@/client/unread";
 import { buildFileTree, folderPathsForSlug, type FileTreeFolder, type FileTreePage } from "@/lib/file-tree";
 
 const EXPANDED_KEY = "wiki-os:file-tree-expanded";
@@ -65,6 +66,21 @@ export function useFileTreeState(currentSlug: string) {
   return { expanded, setFolder };
 }
 
+function UnreadDot({ label }: { label: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className="h-1.5 w-1.5 shrink-0 self-center rounded-full bg-[var(--teal)] shadow-[0_0_8px_var(--teal)]"
+    />
+  );
+}
+
+function folderHasUnread(folder: FileTreeFolder, isUnread: (slug: string) => boolean): boolean {
+  return folder.pages.some((page) => isUnread(page.slug)) || folder.folders.some((child) => folderHasUnread(child, isUnread));
+}
+
 function TreeFolder({
   folder,
   depth,
@@ -81,6 +97,7 @@ function TreeFolder({
   onNavigate?: () => void;
 }) {
   const indent = { paddingLeft: `${depth * 0.9 + 0.5}rem` };
+  const { isUnread } = useUnread();
 
   return (
     <ul>
@@ -102,6 +119,7 @@ function TreeFolder({
               />
               <Icon aria-hidden className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />
               <span className="min-w-0 flex-1 truncate">{child.name}</span>
+              {folderHasUnread(child, isUnread) && <UnreadDot label="Has pages changed since your last visit" />}
               <span className="text-[11px] tabular-nums text-[var(--muted-foreground)]">{child.count}</span>
             </button>
             {open && (
@@ -134,7 +152,8 @@ function TreeFolder({
               style={{ paddingLeft: `${depth * 0.9 + 1.6}rem` }}
             >
               <FileText aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-60" />
-              <span className="min-w-0 break-words">{page.title}</span>
+              <span className="min-w-0 flex-1 break-words">{page.title}</span>
+              {!active && isUnread(page.slug) && <UnreadDot label="Changed since your last visit" />}
             </Link>
           </li>
         );

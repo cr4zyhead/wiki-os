@@ -22,6 +22,7 @@ import {
   getWikiRootPath,
   getGraphData,
   getHomepageData,
+  getPageUpdates,
   getWikiHealthStatus,
   getWikiPage,
   getWikiStats,
@@ -386,6 +387,14 @@ export async function buildServer({
       return await getWikiStats();
     } catch (error) {
       return replyForWikiError(error, reply, "Stats failed");
+    }
+  });
+
+  app.get("/api/updates", async (_request, reply) => {
+    try {
+      return await getPageUpdates();
+    } catch (error) {
+      return replyForWikiError(error, reply, "Page updates failed");
     }
   });
 
