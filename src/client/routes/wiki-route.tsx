@@ -12,6 +12,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 import { useWikiConfig } from "@/client/wiki-config";
+import { CodeBlock } from "@/components/code-block";
 import { getTopicColor, type TopicAliasConfig } from "@/lib/wiki-config";
 import type { WikiHeading, WikiNeighbor, WikiPageData } from "@/lib/wiki-shared";
 import { usePersonImage } from "@/client/use-person-image";
@@ -31,6 +32,7 @@ const markdownComponents = {
   ol: ({ ...props }) => <ol className="mb-4 list-decimal pl-6 leading-[1.8]" {...props} />,
   li: ({ ...props }) => <li className="mb-1.5" {...props} />,
   blockquote: ({ ...props }) => <blockquote className="my-4" {...props} />,
+  pre: CodeBlock,
 };
 
 function normalizeSplatParam(rawSplat: string | undefined) {
