@@ -158,7 +158,7 @@ function RecentActivity({ homepage, label }: { homepage: HomepageData; label: st
           </div>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5">
         {pages.map((page, index) => {
           const accentRail = [
             "before:bg-[var(--teal)]",
@@ -171,9 +171,9 @@ function RecentActivity({ homepage, label }: { homepage: HomepageData; label: st
             <Link
               key={`${tab}:${page.file}`}
               to={`/wiki/${page.slug}`}
-              className={`animate-in hover-lift surface relative overflow-hidden rounded-2xl px-5 py-4 text-left before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${accentRail} stagger-${Math.min(index + 1, 8)}`}
+              className={`animate-in hover-lift surface relative overflow-hidden rounded-2xl px-5 py-3.5 text-left before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${accentRail} stagger-${Math.min(index + 1, 8)}`}
             >
-              <p className="truncate pl-1 font-display text-[1.05rem] text-[var(--foreground)]">
+              <p className="line-clamp-2 pl-1 font-display text-[1.05rem] leading-snug text-[var(--foreground)]">
                 {page.title}
               </p>
               <p className="mt-1 line-clamp-1 pl-1 text-[0.78rem] text-[var(--muted-foreground)]">
