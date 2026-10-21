@@ -63,3 +63,18 @@ describe("wiki health", () => {
     ]);
   });
 });
+
+describe("category heuristics", () => {
+  it("can stop guessing topics for pages with no folder or tag", async () => {
+    const { deriveCategoryNames } = await import("../src/lib/wiki-classification");
+    const { resolveWikiOsConfig } = await import("../src/lib/wiki-config");
+    const text = "Kubernetes cluster notes. Kubernetes upgrades, Kubernetes nodes.";
+    expect(deriveCategoryNames("root.md", "Root", text, {}, resolveWikiOsConfig({})).length).toBeGreaterThan(0);
+    expect(
+      deriveCategoryNames("root.md", "Root", text, {}, resolveWikiOsConfig({ categories: { heuristic: false } })),
+    ).toEqual([]);
+    expect(
+      deriveCategoryNames("Research/x.md", "X", text, {}, resolveWikiOsConfig({ categories: { heuristic: false } })),
+    ).toEqual(["Research"]);
+  });
+});

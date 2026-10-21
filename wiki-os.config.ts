@@ -17,8 +17,8 @@ const config: WikiOsConfigInput = {
     aliases: {
       proyecto: { label: "Proyectos" },
     },
-    // index.md has no folder or tag, so it gets a guessed topic from its most frequent word.
-    hidden: ["actualizado"],
+    // Root pages have no folder or tag; don't guess topics from their words.
+    heuristic: false,
   },
   people: {
     mode: "explicit",

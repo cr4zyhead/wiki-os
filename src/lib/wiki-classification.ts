@@ -265,7 +265,7 @@ export function deriveCategoryNames(
   const frontmatterTopics = collectFrontmatterTopics(frontmatter, config);
   const folderTopics = collectFolderTopics(file, config);
   const heuristicTopics =
-    frontmatterTopics.length > 0 || folderTopics.length > 0
+    frontmatterTopics.length > 0 || folderTopics.length > 0 || !config.categories.heuristic
       ? []
       : collectHeuristicTopics(title, contentMarkdown);
 

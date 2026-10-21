@@ -48,6 +48,8 @@ export interface WikiOsConfigInput {
     maxTopics?: number;
     folderDepth?: number;
     frontmatterKeys?: string[];
+    /** Guess topics from the text of pages that have no folder or tag (default true). */
+    heuristic?: boolean;
   };
   people?: {
     enabled?: boolean;
@@ -91,6 +93,7 @@ export interface WikiOsConfig {
     maxTopics: number;
     folderDepth: number;
     frontmatterKeys: string[];
+    heuristic: boolean;
   };
   people: {
     enabled: boolean;
@@ -134,6 +137,7 @@ export const DEFAULT_WIKI_OS_CONFIG: WikiOsConfig = {
     maxTopics: 6,
     folderDepth: 2,
     frontmatterKeys: ["tags", "topics", "topic", "category", "categories"],
+    heuristic: true,
   },
   people: {
     enabled: true,
@@ -297,6 +301,7 @@ export function resolveWikiOsConfig(input?: WikiOsConfigInput): WikiOsConfig {
       frontmatterKeys: uniqueStrings(
         input?.categories?.frontmatterKeys ?? DEFAULT_WIKI_OS_CONFIG.categories.frontmatterKeys,
       ),
+      heuristic: input?.categories?.heuristic ?? DEFAULT_WIKI_OS_CONFIG.categories.heuristic,
     },
     people: {
       enabled: peopleMode !== "off",
