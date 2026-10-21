@@ -17,6 +17,7 @@ import {
   type WikiSetupStatus,
 } from "./wiki-runtime";
 import { isFinderFolderPickerAvailable, pickFolderWithFinder } from "./folder-picker";
+import { isCommitHash, isSafeVaultFile, readFileDiff, readFileHistory } from "../lib/git-activity";
 import {
   getWikiRootPath,
   getGraphData,
@@ -403,6 +404,25 @@ export async function buildServer({
     } catch (error) {
       return replyForWikiError(error, reply, "Wiki page not found", 404);
     }
+  });
+
+  app.get<{ Querystring: { file?: string } }>("/api/history", async (request, reply) => {
+    const { file } = request.query;
+    const root = await getWikiRootPath();
+    if (!root || !isSafeVaultFile(file)) {
+      return reply.code(400).send({ error: "Invalid file" });
+    }
+    return { commits: (await readFileHistory(root, file)) ?? [] };
+  });
+
+  app.get<{ Querystring: { file?: string; commit?: string } }>("/api/history/diff", async (request, reply) => {
+    const { file, commit } = request.query;
+    const root = await getWikiRootPath();
+    if (!root || !isSafeVaultFile(file) || !isCommitHash(commit)) {
+      return reply.code(400).send({ error: "Invalid file or commit" });
+    }
+    const diff = await readFileDiff(root, file, commit);
+    return diff === null ? reply.code(404).send({ error: "Diff not available" }) : { diff };
   });
 
   if (serveClient && (await canServeClient(clientRoot))) {

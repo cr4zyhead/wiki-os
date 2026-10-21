@@ -44,16 +44,21 @@ export function parseGitLog(output: string): GitActivity {
   return { lastCommit, files };
 }
 
+/** Runs git in the vault (no shell; vault may be owned by another user and mounted read-only). */
+async function runGit(root: string, ...args: string[]) {
+  const { stdout } = await run(
+    "git",
+    ["-c", "safe.directory=*", "-c", "core.quotePath=false", "-C", root, ...args],
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
+  return stdout;
+}
+
 let cache: { key: string; activity: GitActivity } | null = null;
 
 /** Git history of the vault, cached per HEAD. Null when the vault isn't a git repo or git is missing. */
 export async function readGitActivity(root: string): Promise<GitActivity | null> {
-  const git = async (...args: string[]) =>
-    (
-      await run("git", ["-c", "safe.directory=*", "-c", "core.quotePath=false", "-C", root, ...args], {
-        maxBuffer: 64 * 1024 * 1024,
-      })
-    ).stdout;
+  const git = (...args: string[]) => runGit(root, ...args);
 
   try {
     const key = `${root}\n${(await git("rev-parse", "HEAD")).trim()}`;
@@ -65,6 +70,53 @@ export async function readGitActivity(root: string): Promise<GitActivity | null>
     return cache.activity;
   } catch {
     return null; // not a git repo, or git isn't installed: keep file mtimes
+  }
+}
+
+export interface GitCommitEntry {
+  hash: string;
+  at: number;
+  author: string;
+  subject: string;
+}
+
+/** Vault-relative Markdown path with no way out of the vault (and not mistakable for a git option). */
+export function isSafeVaultFile(file: unknown): file is string {
+  if (typeof file !== "string" || !file.endsWith(".md") || file.startsWith("-") || file.startsWith("/")) return false;
+  return !file.split(/[\\/]/).some((part) => part === ".." || part === "");
+}
+
+export const isCommitHash = (hash: unknown): hash is string =>
+  typeof hash === "string" && /^[0-9a-f]{7,40}$/.test(hash);
+
+/** Commits that touched a page, newest first. Null when git isn't available. */
+export async function readFileHistory(root: string, file: string, limit = 100): Promise<GitCommitEntry[] | null> {
+  try {
+    // ponytail: no --follow, so history stops at a rename; add it if pages get renamed often
+    const log = await runGit(root, "log", `-n${limit}`, "--format=%H%x1f%ct%x1f%an%x1f%s", "--", file);
+    return log
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [hash, timestamp, author, subject = ""] = line.split("\x1f");
+        return { hash, at: Number(timestamp) * 1000, author, subject };
+      });
+  } catch {
+    return null;
+  }
+}
+
+const MAX_DIFF_CHARS = 200_000;
+
+/** What one commit changed in a page (unified diff, no headers). Null when git isn't available. */
+export async function readFileDiff(root: string, file: string, hash: string): Promise<string | null> {
+  try {
+    const diff = await runGit(root, "show", "--format=", "--no-color", "--no-ext-diff", hash, "--", file);
+    const hunks = diff.indexOf("\n@@");
+    const body = hunks === -1 ? "" : diff.slice(hunks + 1);
+    return body.length > MAX_DIFF_CHARS ? `${body.slice(0, MAX_DIFF_CHARS)}\n… (diff truncated)` : body;
+  } catch {
+    return null;
   }
 }
 

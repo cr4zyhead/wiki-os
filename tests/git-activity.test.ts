@@ -5,7 +5,15 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseGitLog, readGitActivity, withGitActivity } from "../src/lib/git-activity";
+import {
+  isCommitHash,
+  isSafeVaultFile,
+  parseGitLog,
+  readFileDiff,
+  readFileHistory,
+  readGitActivity,
+  withGitActivity,
+} from "../src/lib/git-activity";
 import type { HomepageData, PageSummary } from "../src/lib/wiki-shared";
 
 const page = (file: string): PageSummary => ({
@@ -57,5 +65,41 @@ describe("git activity", () => {
     expect(activity?.lastCommit?.subject).toBe("primera nota");
     expect([...(activity?.files.keys() ?? [])]).toEqual(["Notas/árbol.md"]);
     expect(await readGitActivity(mkdtempSync(path.join(tmpdir(), "wikios-nogit-")))).toBeNull();
+  });
+});
+
+describe("page history", () => {
+  it("only accepts vault-relative markdown paths and hex hashes", () => {
+    expect(isSafeVaultFile("Research/a b.md")).toBe(true);
+    for (const bad of ["../etc/passwd.md", "a/../../b.md", "/abs.md", "--output=x.md", "a.txt", "a//b.md", 3]) {
+      expect(isSafeVaultFile(bad)).toBe(false);
+    }
+    expect(isCommitHash("a1b2c3d")).toBe(true);
+    expect(isCommitHash("HEAD")).toBe(false);
+    expect(isCommitHash("a1b2c3d --stat")).toBe(false);
+  });
+
+  it("lists a page's commits and the diff of one of them", async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "wikios-hist-"));
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", repo, "-c", "user.name=Ana", "-c", "user.email=a@a", ...args]).toString();
+    git("init", "-q");
+    writeFileSync(path.join(repo, "nota.md"), "uno\n");
+    git("add", ".");
+    git("commit", "-qm", "crea nota");
+    writeFileSync(path.join(repo, "nota.md"), "uno\ndos\n");
+    writeFileSync(path.join(repo, "otra.md"), "x\n");
+    git("add", ".");
+    git("commit", "-qm", "agrega dos");
+
+    const history = await readFileHistory(repo, "nota.md");
+    expect(history?.map((c) => [c.subject, c.author])).toEqual([
+      ["agrega dos", "Ana"],
+      ["crea nota", "Ana"],
+    ]);
+    const diff = await readFileDiff(repo, "nota.md", history![0].hash);
+    expect(diff?.startsWith("@@")).toBe(true);
+    expect(diff).toContain("+dos");
+    expect(diff).not.toContain("otra.md");
   });
 });

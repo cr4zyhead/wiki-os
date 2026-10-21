@@ -12,6 +12,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
 import { useWikiConfig } from "@/client/wiki-config";
+import { PageHistory } from "@/components/page-history";
 import { getTopicColor, type TopicAliasConfig } from "@/lib/wiki-config";
 import type { WikiHeading, WikiNeighbor, WikiPageData } from "@/lib/wiki-shared";
 import { usePersonImage } from "@/client/use-person-image";
@@ -607,6 +608,7 @@ export function Component() {
                 </>
               )}
             </div>
+            <PageHistory file={page.fileName} />
           </div>
         </div>
 
