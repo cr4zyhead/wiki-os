@@ -524,7 +524,7 @@ export function Component() {
       </SiteHeader>
 
       <main
-        className="animate-in mx-auto w-full max-w-3xl px-4 pt-4 sm:px-6 sm:pt-8 lg:px-8"
+        className="wiki-main animate-in mx-auto w-full px-4 pt-4 sm:px-6 sm:pt-8 lg:px-8"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 4rem)" }}
       >
         {/* Breadcrumb */}

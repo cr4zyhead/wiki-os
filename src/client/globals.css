@@ -343,6 +343,12 @@ html {
   display: none;
 }
 
+/* Article column. When the TOC sits beside it, main grows by the TOC's width (as right padding,
+   where the absolute TOC lands) so article and TOC are centered together. */
+.wiki-main {
+  max-width: 60rem;
+}
+
 @media (min-width: 1280px) {
   html:not([data-sidebar="open"]) .toc-aside {
     display: block;
@@ -350,6 +356,11 @@ html {
 
   html:not([data-sidebar="open"]) .toc-inline {
     display: none;
+  }
+
+  html:not([data-sidebar="open"]) .wiki-main {
+    max-width: 75rem;
+    padding-right: 17rem;
   }
 }
 
@@ -360,5 +371,10 @@ html {
 
   .toc-inline {
     display: none;
+  }
+
+  .wiki-main {
+    max-width: 75rem;
+    padding-right: 17rem;
   }
 }
