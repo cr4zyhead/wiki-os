@@ -20,6 +20,15 @@ export interface WikiStats {
   total_pages: number;
   total_words: number;
   top_backlinks: BacklinkStat[];
+  health?: WikiHealthReport;
+}
+
+/** Broken links, pages nobody links to, and the pages that went longest without an update. */
+export interface WikiHealthReport {
+  brokenLinks: Array<{ slug: string; title: string; target: string }>;
+  orphans: Array<{ slug: string; title: string }>;
+  leastUpdated: Array<{ slug: string; title: string; updatedAt: number; stale: boolean }>;
+  staleDays: number;
 }
 
 export interface WikiHeading {

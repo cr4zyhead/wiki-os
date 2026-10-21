@@ -3,6 +3,7 @@ import { useLoaderData, Link, redirect } from "react-router-dom";
 import { useWikiConfig } from "@/client/wiki-config";
 import type { WikiStats } from "@/lib/wiki-shared";
 import { ChangeVaultLink } from "@/components/change-vault-link";
+import { WikiHealth } from "@/components/wiki-health";
 
 import { fetchJson, isSetupRequiredResponse } from "../api";
 import { RouteErrorBoundary } from "../route-error-boundary";
@@ -171,6 +172,8 @@ export function Component() {
               })}
             </div>
           </div>
+
+          {stats.health && <WikiHealth health={stats.health} />}
         </div>
       </main>
 

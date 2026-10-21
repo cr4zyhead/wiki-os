@@ -1,3 +1,6 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
 import {
   getTopicEmoji,
   getTopicLabel,
@@ -49,6 +52,7 @@ import {
 } from "./wiki-state";
 import { createWikiWatcherController } from "./wiki-watcher";
 import { readGitActivity, withGitActivity } from "./git-activity";
+import { buildHealthReport, extractLinkTargets, isAttachmentTarget } from "./wiki-health";
 export type {
   SearchMatch,
   SearchResult,
@@ -388,7 +392,34 @@ export async function searchWiki(query: string) {
 }
 
 export async function getWikiStats() {
-  return queries.getWikiStats();
+  const [stats, pages, root] = await Promise.all([
+    queries.getWikiStats(),
+    queries.getHealthPages(),
+    getWikiRootPath(),
+  ]);
+  if (!root) return stats;
+
+  const attachments = [
+    ...new Set(pages.flatMap((page) => extractLinkTargets(page.markdown)).filter(isAttachmentTarget)),
+  ];
+  const existing = new Set(
+    (
+      await Promise.all(
+        attachments.map((target) =>
+          fs.access(path.join(root, target)).then(
+            () => target,
+            () => null,
+          ),
+        ),
+      )
+    ).filter((target): target is string => target !== null),
+  );
+  const activity = await readGitActivity(root);
+  const health = buildHealthReport(pages, {
+    attachmentExists: (target) => existing.has(target),
+    updatedAt: (page) => activity?.files.get(page.file)?.updatedAt ?? page.modifiedAt,
+  });
+  return { ...stats, health };
 }
 
 export async function getHomepageData() {

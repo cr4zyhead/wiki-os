@@ -122,7 +122,7 @@ export async function readFileDiff(root: string, file: string, hash: string): Pr
 
 // ponytail: LLM-wiki catalog and changelog are touched by nearly every commit, so they'd always
 // top "recent"; make this configurable if another vault has its own hub pages.
-const HUB_FILES = new Set(["index.md", "log.md"]);
+export const HUB_FILES = new Set(["index.md", "log.md"]);
 
 /** Re-dates the homepage's recent lists with git history (last commit and first commit per page). */
 export function withGitActivity(

@@ -5,6 +5,7 @@ import {
   buildSearchMatches,
   countTermOccurrences,
 } from "./wiki-classification";
+import { createLinkResolver, type HealthPage } from "./wiki-health";
 import { getTopicEmoji, getTopicLabel, isTopicHidden, type WikiOsConfig } from "./wiki-config";
 import {
   type CategoryInfo,
@@ -110,6 +111,7 @@ export interface WikiQueries {
   getWikiPage(slugParts: string[]): Promise<WikiPageData>;
   getWikiIndexStatus(): Promise<WikiIndexStatus>;
   getWikiHealthStatus(): Promise<WikiHealthStatus>;
+  getHealthPages(): Promise<HealthPage[]>;
 }
 
 interface PageRow {
@@ -506,6 +508,15 @@ export async function getGraphData(deps: WikiQueryDependencies): Promise<GraphDa
   };
 }
 
+function listPageFiles(db: SqliteDb) {
+  return (db.prepare("SELECT file FROM pages").all() as Array<{ file: string }>).map((page) => page.file);
+}
+
+export async function getHealthPages(deps: WikiQueryDependencies): Promise<HealthPage[]> {
+  await prepareRead(deps);
+  return deps.getDb().prepare("SELECT file, slug, title, markdown, modified_at AS modifiedAt FROM pages").all() as HealthPage[];
+}
+
 export async function getWikiPage(
   deps: WikiQueryDependencies,
   slugParts: string[],
@@ -514,8 +525,7 @@ export async function getWikiPage(
 
   const canonicalSlug = await canonicalSlugFromRouteParts(slugParts);
   const db = deps.getDb();
-  const row = db
-    .prepare(`
+  const pageSelect = `
       SELECT
         file,
         slug,
@@ -527,9 +537,14 @@ export async function getWikiPage(
         category_names_json AS categoryNamesJson,
         is_person AS isPerson
       FROM pages
-      WHERE slug = ?
-    `)
-    .get(canonicalSlug) as WikiPageRow | undefined;
+    `;
+  let row = db.prepare(`${pageSelect} WHERE slug = ?`).get(canonicalSlug) as WikiPageRow | undefined;
+
+  // Obsidian-style links ([[note]] for Folder/note.md, other casing) land here without the exact path.
+  const resolvedFile = row ? null : createLinkResolver(listPageFiles(db))(decodeSlugParts(slugParts).join("/"));
+  if (resolvedFile) {
+    row = db.prepare(`${pageSelect} WHERE file = ?`).get(resolvedFile) as WikiPageRow | undefined;
+  }
 
   if (!row) {
     throw new Error("Wiki page not found");
@@ -685,5 +700,6 @@ export function createWikiQueries(deps: WikiQueryDependencies): WikiQueries {
     getWikiPage: (slugParts) => getWikiPage(deps, slugParts),
     getWikiIndexStatus: () => getWikiIndexStatus(deps),
     getWikiHealthStatus: () => getWikiHealthStatus(deps),
+    getHealthPages: () => getHealthPages(deps),
   };
 }
