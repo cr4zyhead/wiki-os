@@ -23,6 +23,7 @@ import {
   runDbMigrations,
   runStartupIntegrityCheck,
   seedCategoryRules,
+  resolveBacklinkTargets,
   upsertPageRecord,
   type SqliteDb,
 } from "./wiki-db";
@@ -238,6 +239,7 @@ const indexer = createWikiIndexer<SqliteDb, WikiOsConfig>({
   extractSummary,
   requireDb,
   upsertPageRecord,
+  resolveLinks: resolveBacklinkTargets,
   deletePageByFile,
   selectPageModifiedAt: (db, file) =>
     (db.prepare("SELECT modified_at AS modifiedAt FROM pages WHERE file = ?").get(file) as

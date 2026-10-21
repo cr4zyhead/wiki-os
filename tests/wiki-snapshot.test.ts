@@ -53,6 +53,29 @@ afterEach(() => {
 });
 
 describe("wiki snapshot", () => {
+  it("resolves [[links]] by file name for backlinks, the graph and page lookups", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "wiki-ui-links-"));
+
+    try {
+      await mkdir(path.join(root, "Research"), { recursive: true });
+      await writeFile(path.join(root, "Research", "Infra.md"), "# Infra\n\nThe home server.\n");
+      await writeFile(path.join(root, "Notes.md"), "# Notes\n\nSee [[infra]] and [[Research/Infra#Top]].\n");
+
+      const wiki = await loadWikiModule(root);
+      const infra = await wiki.getWikiPage(["infra"]);
+      expect(infra.slug).toBe("Research/Infra");
+      expect(infra.neighbors.map((n) => n.slug)).toEqual(["Notes"]);
+
+      const graph = await wiki.getGraphData();
+      expect(graph.nodes.find((n) => n.slug === "Research/Infra")?.backlinkCount).toBe(2);
+      expect(graph.edges).toEqual(
+        expect.arrayContaining([expect.objectContaining({ source: "Notes", target: "Research/Infra" })]),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("derives homepage and article data from the cached snapshot", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "wiki-ui-"));
 
